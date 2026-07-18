@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "prd.schema.json",
+  "title": "prd",
+  "description": "The current version's buildable requirements — turns the v1 slice into something you can build. Optional layer, scaffolded only with --full. Read project-summary.json first for the thesis.",
+  "type": "object",
+  "required": ["project", "slice", "status", "date", "owner", "context", "goals", "targetUser", "successMetrics", "coreFlow", "functionalRequirements", "nonFunctional", "milestones", "openQuestions"],
+  "additionalProperties": false,
+  "properties": {
+    "project": { "type": "string", "description": "Project name." },
+    "slice": { "type": "string", "description": "The v1 slice this PRD covers." },
+    "status": { "type": "string", "description": "Draft | Active | Shipped." },
+    "date": { "type": "string", "description": "ISO date (YYYY-MM-DD)." },
+    "owner": { "type": "string", "description": "Who owns this PRD." },
+    "context": { "type": "string", "description": "What this version builds and the one risky thing it's testing. Name what is built first but isn't the headline." },
+    "goals": {
+      "type": "object",
+      "required": ["v1Goal", "nonGoals"],
+      "additionalProperties": false,
+      "properties": {
+        "v1Goal": { "type": "string", "description": "The one working thing v1 delivers, stated as a flow." },
+        "nonGoals": { "type": "array", "items": { "type": "string" }, "description": "What you are deliberately NOT building yet — and where it's deferred." }
+      }
+    },
+    "targetUser": { "type": "string", "description": "Who v1 serves. Every requirement is judged against this one user." },
+    "successMetrics": { "type": "string", "description": "The near-term gate v1 must pass — specific and falsifiable. The signals you'll watch." },
+    "coreFlow": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "The end-to-end user flow, numbered. One sitting from open to stored."
+    },
+    "functionalRequirements": {
+      "type": "array",
+      "description": "What the system must do. Mark the core requirement so effort lands there.",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "items"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "description": "Requirement id, e.g. 'FR1'." },
+          "name": { "type": "string", "description": "Short name." },
+          "items": { "type": "array", "items": { "type": "string" }, "description": "The concrete requirements under this heading." },
+          "core": { "type": "boolean", "description": "True for the one part worth real effort." }
+        }
+      }
+    },
+    "nonFunctional": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Privacy / performance / reliability / the simplicity guardrail."
+    },
+    "milestones": {
+      "type": "array",
+      "description": "Build milestones within v1.",
+      "items": {
+        "type": "object",
+        "required": ["id", "slice"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "description": "Milestone id, e.g. 'M1'." },
+          "slice": { "type": "string", "description": "The slice name." },
+          "delivers": { "type": "string", "description": "What it delivers." }
+        }
+      }
+    },
+    "openQuestions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Unknowns and how you'll resolve each — a spike, a gate, a decision."
+    }
+  }
+}

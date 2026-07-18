@@ -1,0 +1,34 @@
+{
+  "project": "{{PROJECT_NAME}}",
+  "slice": "[the v1 slice this PRD covers]",
+  "status": "Draft",
+  "date": "{{DATE}}",
+  "owner": "{{OWNER}}",
+  "context": "[What this version builds, and the one risky thing it's really testing. Name what is NOT the headline product but is built first, and why. Read project-summary.json first for the full thesis.]",
+  "goals": {
+    "v1Goal": "[The one working thing v1 delivers, stated as a flow.]",
+    "nonGoals": [
+      "[What you are deliberately not building yet — and where it's deferred to.]"
+    ]
+  },
+  "targetUser": "[Who v1 serves. Every requirement below is judged against this one user, not a general audience.]",
+  "successMetrics": "[The near-term gate v1 must pass — specific and falsifiable. The lightweight signals you'll watch.]",
+  "coreFlow": [
+    "[Step 1 of the end-to-end user flow — one sitting from open to stored]",
+    "[Step 2]"
+  ],
+  "functionalRequirements": [
+    { "id": "FR1", "name": "[name]", "items": ["[requirement]"], "core": false },
+    { "id": "FR2", "name": "[the core — the only part worth real effort]", "items": ["[the risky, high-value requirement; mark it so effort lands here]"], "core": true }
+  ],
+  "nonFunctional": [
+    "[privacy / performance / reliability / the simplicity guardrail]"
+  ],
+  "milestones": [
+    { "id": "M1", "slice": "[slice]", "delivers": "[what it delivers]" },
+    { "id": "M2", "slice": "[slice]", "delivers": "" }
+  ],
+  "openQuestions": [
+    "[unknowns and how you'll resolve each — a spike, a gate, a decision]"
+  ]
+}

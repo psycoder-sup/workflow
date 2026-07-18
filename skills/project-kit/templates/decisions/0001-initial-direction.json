@@ -1,0 +1,13 @@
+{
+  "number": 1,
+  "title": "Initial project direction",
+  "status": "Accepted",
+  "date": "{{DATE}}",
+  "owner": "{{OWNER}}",
+  "supersedes": null,
+  "supersededBy": null,
+  "context": "{{PROJECT_NAME}} is starting out. {{ONE_LINER}}\n\n[Why does this project exist? Who is it for, and what's the core bet that makes it worth building? Capture the founding intent so a future session can see the \"why\" without reverse-engineering it from code.]\n\n{{CORE_BET}}",
+  "decision": "[The shape of the first version and why this slice comes first. The riskiest or highest-value thing to build first — and what's explicitly out of scope for now.]",
+  "consequences": "[What this commits the project to early, and what it defers.]",
+  "staysTrue": "[The non-negotiables this direction rests on — the things later decisions should not silently reverse.]"
+}

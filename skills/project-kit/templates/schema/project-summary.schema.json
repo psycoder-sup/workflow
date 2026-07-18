@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "project-summary.schema.json",
+  "title": "project-summary",
+  "description": "The thesis / 'why' doc. Read first for full context; changes slowly. Optional layer, scaffolded only with --full.",
+  "type": "object",
+  "required": ["project", "oneLiner", "coreBet", "audience", "coreLoop", "buildSequencing", "validation", "openQuestions"],
+  "additionalProperties": false,
+  "properties": {
+    "project": { "type": "string", "description": "Project name." },
+    "tagline": { "type": "string", "description": "Working name / tagline." },
+    "oneLiner": { "type": "string", "description": "One sentence: what the project is." },
+    "coreBet": { "type": "string", "description": "The bet that makes this worth building." },
+    "coreInsight": { "type": "string", "description": "The non-obvious idea this rests on. Why now, why this angle. Specific enough to be wrong." },
+    "audience": { "type": "string", "description": "Who it's for. If you're the first dogfooder, say so." },
+    "coreLoop": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "The repeating cycle the product runs, as numbered steps. Name which step carries the real value vs. plumbing."
+    },
+    "buildSequencing": { "type": "string", "description": "What gets built first and why — riskiest, highest-value first. What's deferred. The anti-goal." },
+    "validation": {
+      "type": "object",
+      "required": ["nearTerm", "ultimate"],
+      "additionalProperties": false,
+      "properties": {
+        "nearTerm": { "type": "string", "description": "The near-term gate, answerable in a week or two. Specific and falsifiable." },
+        "ultimate": { "type": "string", "description": "The ultimate gate that says this worked." }
+      }
+    },
+    "openQuestions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Things you don't know yet and will resolve with evidence."
+    }
+  }
+}

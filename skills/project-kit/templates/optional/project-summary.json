@@ -1,0 +1,20 @@
+{
+  "project": "{{PROJECT_NAME}}",
+  "tagline": "[Working name / tagline. This is the thesis doc — read first for the full \"why.\" It changes slowly.]",
+  "oneLiner": "{{ONE_LINER}}",
+  "coreBet": "{{CORE_BET}}",
+  "coreInsight": "[What's the non-obvious idea this project rests on? Why now, and why is this the angle others miss? Be specific enough to be wrong.]",
+  "audience": "[The user. If you're the first user / dogfooder, say so — it solves the hardest retention problem and is a feature, not an apology.]",
+  "coreLoop": [
+    "[Step 1 of the repeating cycle the product runs]",
+    "[Step 2 — name which step carries the real value vs. which is just raw material / plumbing]"
+  ],
+  "buildSequencing": "[What gets built first and why — the riskiest, highest-value thing first. What's deliberately deferred. The anti-goal: polishing well-understood plumbing while dodging the hard, fuzzy part.]",
+  "validation": {
+    "nearTerm": "[The near-term gate, answerable in a week or two. Specific and falsifiable — not 'users seem happy.']",
+    "ultimate": "[The ultimate gate that says this worked.]"
+  },
+  "openQuestions": [
+    "[The things you don't know yet and will resolve with evidence.]"
+  ]
+}

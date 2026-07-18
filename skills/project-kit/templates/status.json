@@ -1,0 +1,19 @@
+{
+  "project": "{{PROJECT_NAME}}",
+  "oneLiner": "{{ONE_LINER}}",
+  "lastUpdated": "{{DATE}}",
+  "now": ["{{NOW}}"],
+  "next": ["{{NEXT}}"],
+  "milestones": [
+    { "title": "[M1 — first milestone: rename or delete]", "done": false, "target": "" }
+  ],
+  "blocked": [],
+  "shipped": [
+    {
+      "date": "{{DATE}}",
+      "summary": "Bootstrapped the context system with /project-kit: status.json + decision records + the CLAUDE.md operating rules.",
+      "commit": "",
+      "link": ""
+    }
+  ]
+}

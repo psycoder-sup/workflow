@@ -1,0 +1,16 @@
+{
+  "name": "workflow",
+  "version": "0.1.0",
+  "description": "Spec-driven delivery pipeline: /spec (PRD) -> /taskplan (partitioned plan) -> /implement (parallel orchestrated build) -> /cleanup (PR, CI, merge, teardown), plus /project-kit project scaffolding.",
+  "author": {
+    "name": "SangUk Park"
+  },
+  "keywords": [
+    "workflow",
+    "orchestration",
+    "spec",
+    "planning",
+    "subagents",
+    "claude-code"
+  ]
+}
