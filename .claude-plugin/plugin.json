@@ -1,7 +1,7 @@
 {
   "name": "workflow",
-  "version": "0.1.0",
-  "description": "Spec-driven delivery pipeline: /spec (PRD) -> /taskplan (partitioned plan) -> /implement (parallel orchestrated build) -> /cleanup (PR, CI, merge, teardown), plus /project-kit project scaffolding.",
+  "version": "0.2.0",
+  "description": "Spec-driven delivery pipeline: /spec (PRD) -> /taskplan (partitioned plan) -> /implement (parallel orchestrated build; /implement-orca for Orca-dispatched workers) -> /cleanup (PR, CI, merge, teardown), plus /project-kit project scaffolding.",
   "author": {
     "name": "SangUk Park"
   },
