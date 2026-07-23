@@ -54,7 +54,10 @@ and provenance checks apply as written there.
 - **`verifier` subagent (optional)** — independently reproduces build/tests and checks acceptance
   criteria. Read-only, spawned with the built-in `Agent` tool (it implements nothing, so Orca
   provenance is not needed for it).
-- **`/code-review`, `/security-review`** — fresh-eyes review of the integrated diff.
+- **Review worker** — a dedicated Orca terminal (`claude --model opus --dangerously-skip-permissions`)
+  that runs `/code-review` and `/security-review` as real slash commands and reports findings back.
+  Not this session: `/code-review` is `disable-model-invocation`, so the `Skill` tool cannot call it
+  here. See Step 5.
 
 ## Anti-freelance rule (the one rule that makes this work)
 
@@ -226,14 +229,37 @@ criteria and a clean file boundary, the task isn't ready — refine the partitio
   ```
 
 ### 5. Review
-`/code-review` and `/security-review` spawn their own subagents — **you run them yourself, directly
-in this session**; never delegate a review to a worker.
-- **`/code-review medium`** — for any run with real code changes (always pass `medium`; the no-arg
-  default burns far more tokens than a routine review needs).
-- **`/security-review`** — when the diff touches auth/authz, crypto, secrets, user input,
-  file/path/network I/O, deserialization, or SQL. Skip when there's no plausible security impact.
-- Route every finding back to a worker as a fix task (anti-freelance still applies); log each such
-  fix with `--review-fix`. Re-verify after fixes.
+`/code-review` and `/security-review` are `disable-model-invocation` — the `Skill` tool rejects them
+in **this** session. Do not substitute a home-grown reviewer subagent; the user wants the real slash
+commands. Run them in one **dedicated review worker** instead:
+1. Stand up a fresh Orca worker terminal for review — **opus** tier, since review judgment is worth
+   the top model: `claude --model opus --dangerously-skip-permissions`. Wait for TUI idle.
+2. In that **same** worker session, send the slash commands directly as terminal input (not via
+   `task-create`/`dispatch` — these are user slash commands, not delegated implementation tasks):
+   - **`/code-review medium`** — for any run with real code changes (always pass `medium`; the
+     no-arg default burns far more tokens than a routine review needs).
+   - **`/security-review`** — afterward, in the **same** session, when the diff touches
+     auth/authz, crypto, secrets, user input, file/path/network I/O, deserialization, or SQL. Skip
+     when there's no plausible security impact.
+
+   Illustrative only (orchestration skill's terminal mechanics are authoritative):
+   ```bash
+   orca terminal create --worktree active --title code-review \
+     --command "claude --model opus --dangerously-skip-permissions" --json
+   orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 60000 --json
+   orca terminal send --terminal <handle> --text "/code-review medium" --enter
+   # poll/wait for the report, then in the same session:
+   orca terminal send --terminal <handle> --text "/security-review" --enter
+   ```
+   Both commands run their own background subagents inside that one worker session — no need for a
+   second terminal per command.
+3. Poll the terminal output until each report completes, then read the findings back into this
+   orchestrator session — that's the "report back to parent" step; the review worker never acts on
+   its own findings.
+4. Route every finding back to a **code** worker as a fix task (anti-freelance still applies — the
+   review worker only reviews, it never fixes); log each such fix with `--review-fix`. Re-verify
+   after fixes.
+5. Close the review worker terminal with the rest of teardown (Step 6) once the run is done.
 
 ### 6. Finish + run log
 - **Teardown**: close worker terminals when the run is done (idle workers may be reused across waves
