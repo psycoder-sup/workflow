@@ -1,13 +1,15 @@
 ---
 name: cleanup
 description: >
-  Ship a completed /implement milestone: open a PR for the worktree branch, poll CI until
-  conclusive (never cancel — self-hosted runners can be slow), auto-merge when every check is green
-  and the PR is MERGEABLE/CLEAN, then clean up the worktree + branches. In project-kit repos the
-  milestone's status.json now->shipped bump rides INSIDE the milestone PR (no direct push to main),
-  so parallel sessions never race a shared-doc write. Run AFTER a successful
-  /implement when the branch's work is committed and verified. It ships what's there — it never
-  writes or fixes code; a red CI or required review ends the skill with a report, not a patch.
+  Ship a completed /implement milestone: open a PR for the worktree branch (auto-closing the GitHub
+  issues it resolves), poll CI until conclusive (never cancel — self-hosted runners can be slow),
+  auto-merge when every check is green and the PR is MERGEABLE/CLEAN, then close the emptied GitHub
+  milestone and clean up the worktree + branches (UNLESS running inside an Orca terminal, which owns
+  the worktree lifecycle — then teardown is skipped). In project-kit repos the milestone's
+  status.json now->shipped bump rides INSIDE the milestone PR (no direct push to main), so parallel
+  sessions never race a shared-doc write. Run AFTER a successful /implement when the branch's work is
+  committed and verified. It ships what's there — it never writes or fixes code; a red CI or required
+  review ends the skill with a report, not a patch.
 trigger: /cleanup
 user-invocable: true
 argument-hint: "[branch or PR-title override] — usually none; infers the current worktree branch"
@@ -59,14 +61,20 @@ build/tests are green locally, and you're ready to ship it to `main`. Not for un
 - Push the code: `git push -u origin "$branch"` (add `--force-with-lease` if you rebased).
 - `gh pr create --base main --head "$branch" --title "…" --body-file …` — body = what shipped + how
   it was verified; end with the repo's PR footer convention. **Capture the PR number AND URL.**
+- **(GitHub milestones) Auto-close the issues this milestone resolves.** In the PR body, add a
+  `Closes #<n>` line for every GitHub issue this PR completes (from the plan / the gate's milestone),
+  so the merge closes them automatically — no separate `gh issue close` call, and the issues link back
+  to the PR. Don't list issues you only partially touched; only ones this ship actually finishes.
 - **(project-kit) Fold the `status.json` now→shipped bump into this PR** — do NOT save it for after
   the merge:
   - **Surgically** edit `docs/pm/status.json` (not a full reserialize): remove the milestone from
     `now`; prepend a `shipped` entry — `date`, `link` = the PR URL you just captured, a one-line
     summary + verification, and `commit` = `""` (the merge SHA isn't known yet and is intentionally
     **not** recorded — the PR link is the durable pointer; recording the merge SHA would force a
-    post-merge edit, i.e. exactly the direct push we're eliminating); bump `lastUpdated`. **Do NOT
-    `trim shipped` here** — trimming rewrites the array tail and is the single biggest cross-session
+    post-merge edit, i.e. exactly the direct push we're eliminating); bump `lastUpdated`. **If this
+    ship satisfies a gate's `exitCriteria`, flip that gate's `done: true` here** — its GitHub
+    milestone gets closed post-merge (step 5), and the invariant is *a gate is `done` iff its
+    `githubMilestone` is closed*, so the two must move together. **Do NOT `trim shipped` here** — trimming rewrites the array tail and is the single biggest cross-session
     collision; leave it to an occasional single-writer chore (step 5). Validate:
     `python3 -c "import json;json.load(open('docs/pm/status.json'))"`.
   - Commit it (`docs(status): ship <milestone>`) and `git push` onto the **same branch** so it rides
@@ -105,22 +113,37 @@ Merge **iff** every check is `SUCCESS`, `mergeable=MERGEABLE`, and `mergeStateSt
 - **Gotcha:** don't pass `--delete-branch`. From inside a worktree it errors
   (`fatal: 'main' is already used by worktree …`). Delete branches in step 4.
 
-### 4. Clean up worktree + branches
-- Do this **from the main repo dir, never from inside the worktree you're removing** — that dir is
-  your cwd, and removing it breaks the shell (you'll get "working directory was deleted").
-- Sync: `git checkout main` (in the main dir) → `git fetch origin main` → `git merge --ff-only origin/main`.
-- Remove the milestone worktree: `git worktree remove --force <path>` → `git worktree prune`.
-- Delete the branch: `git push origin --delete "$branch"` (remote) + `git branch -D "$branch"` (local).
+### 4. Clean up worktree + branches — SKIP inside an Orca terminal
+- **First, the Orca guard.** If `$ORCA_TERMINAL_HANDLE` is set (equivalently `TERM_PROGRAM=Orca`),
+  this session is running in an **Orca-managed** terminal/worktree (`ORCA_WORKTREE_ID`). **Orca owns
+  the worktree lifecycle — do NOT remove the worktree or delete the local branch here.** Removing it
+  out from under Orca breaks the pane. In that case: still delete the **remote** branch
+  (`git push origin --delete "$branch"` — it's merged and independent of the local worktree) and clean
+  throwaway artifacts, then **report** "worktree + local branch left for Orca to manage" and skip the
+  rest of this step. Detect once: `[ -n "$ORCA_TERMINAL_HANDLE" ]`.
+- **Otherwise (plain terminal), tear down normally:**
+  - Do this **from the main repo dir, never from inside the worktree you're removing** — that dir is
+    your cwd, and removing it breaks the shell (you'll get "working directory was deleted").
+  - Sync: `git checkout main` (in the main dir) → `git fetch origin main` → `git merge --ff-only origin/main`.
+  - Remove the milestone worktree: `git worktree remove --force <path>` → `git worktree prune`.
+  - Delete the branch: `git push origin --delete "$branch"` (remote) + `git branch -D "$branch"` (local).
 - **Only the milestone's worktree/branch.** `git worktree list` will show **other sessions'**
   worktrees — leave those completely alone.
 - Clean any throwaway artifacts this milestone created (e.g. purge thrashed CI caches with
   `gh cache delete`, remove scratch containers), but nothing shared.
 
-### 5. (project-kit) status.json — already shipped inside the PR
-Nothing to push to `main`. The `status.json` now→shipped bump merged as part of the milestone PR
-(step 1) — that's the whole point of folding it in, so N parallel sessions never race a direct write.
+### 5. (project-kit) status.json + GitHub milestone — reconcile the two layers
+The `status.json` now→shipped bump merged as part of the milestone PR (step 1) — nothing to push to
+`main`. The merge also auto-closed the issues named `Closes #<n>` in the PR body (step 1).
 - **Confirm it landed:** on the freshly-synced `main` from step 4, `git log -1 --stat` should show
   `docs/pm/status.json` in the merge, and the milestone should read as `shipped`.
+- **(GitHub milestones) Close the milestone when it empties.** After the merge closed this ship's
+  issues, check the gate's GitHub milestone:
+  `gh api repos/{owner}/{repo}/milestones/<N> --jq '.open_issues'`. If it's `0` and you flipped that
+  gate's `done: true` in step 1, close the milestone: `gh api -X PATCH repos/{owner}/{repo}/milestones/<N> -f state=closed`.
+  **Enforce the invariant:** a gate is `done` in `status.json` iff its `githubMilestone` is closed —
+  if step 1 flipped `done` but open issues remain, that gate is NOT actually done: leave the milestone
+  open and report the mismatch rather than force-closing.
 - **Housekeeping is a separate single-writer chore, never part of a concurrent ship.** Trimming
   `shipped` to the latest ~3 and tidying `next` rewrites shared array regions — exactly the edits
   that conflict across sessions. Do them deliberately from **one** session when nothing else is
@@ -142,5 +165,12 @@ Nothing to push to `main`. The `status.json` now→shipped bump merged as part o
   cross-session collision. Trim as a deliberate single-writer chore (step 5).
 - **Slow ≠ hung** on self-hosted runners — poll, don't cancel.
 - **Clean up from the parent dir; never delete sibling worktrees.**
+- **Inside an Orca terminal (`$ORCA_TERMINAL_HANDLE` set), do NOT tear down the worktree/local
+  branch** — Orca owns that lifecycle and removing it breaks the pane. Delete only the merged remote
+  branch and leave the rest for Orca. Outside Orca, tear down normally.
+- **Sync both tracking layers on the ship, and never separately from the merge.** GitHub issues close
+  via `Closes #<n>` in the PR body (merge-driven, not a side call); the gate's milestone closes
+  post-merge only when it empties; the `status.json` gate `done` flip rides the PR. The invariant —
+  a gate is `done` iff its `githubMilestone` is closed — is the reconciliation check, not a suggestion.
 - **Report, don't fix** — a red gate or required review ends the skill with a clear status; fixing is
   a separate pass.
