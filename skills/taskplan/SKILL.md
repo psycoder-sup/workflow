@@ -79,8 +79,14 @@ Override per task only when warranted (e.g. a docs-only task relaxes `tdd`).
 ### 6. Derive waves + parallel width
 Topologically order tasks: a task lands in the earliest wave after all its `depends_on` are in
 earlier waves AND its `files_owned` are disjoint from every other task already placed in that wave.
-Compute **`parallelWidth W`** = the size of the widest wave.
-- **`W >= 2`** → real parallel work; `/implement` is justified.
+**Collapse linear chains first**: consecutive tasks that would each sit alone in their wave (A → B
+→ C with nothing beside them) merge into one task with a multi-step brief — width-1 waves are pure
+dispatch overhead in `/implement`. Then compute **`parallelWidth W`** = the size of the widest
+wave, and **`V`** = the task count after collapsing.
+- **`W >= 2` and `V >= 5`** → real parallel work at real volume; `/implement` is justified.
+- **`W >= 2` but `V <= 4`** → parallel but small. Record it, and **note**: "Small-parallel work —
+  `/implement`'s volume gate will route this to direct dispatch (parallel implementers, no run
+  machinery)." Don't pad the task count to clear the gate.
 - **`W == 1`** → the work is serial (every wave has one task). Record it, and **warn**: "Serial work
   — `/implement`'s W>=2 gate will reject this; route to a single `code-implementer` or a normal
   session instead." Don't invent fake parallelism to dodge the gate.
@@ -94,7 +100,8 @@ schema (`python3 -c "import json,sys; json.load(open(sys.argv[1]))" docs/plan/<s
 
 ### 8. Report + hand off
 Print: task count, the wave layout (which tasks in which wave), `W`, and schema-valid ✓. Then the
-next step: **`/implement docs/plan/<slug>.json`** (or, if `W == 1`, the single-implementer route).
+next step: **`/implement docs/plan/<slug>.json`** (or, if `W == 1`, the single-implementer route;
+if `V <= 4`, note that `/implement` will take its direct-dispatch path).
 
 ## Rules
 - **Independence is discovered, not forced** — only split what's genuinely independent; don't shard a

@@ -33,7 +33,9 @@ from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
 
-WORKFLOW_VERSION = "1.9.0"  # bump when the kit's architecture/log schema changes
+WORKFLOW_VERSION = "2.0.0"  # bump when the kit's architecture/log schema changes
+# 2.0.0: two-dimension gate (width AND volume V>=5; V<=4 -> direct dispatch, unlogged)
+#        + linear-chain collapse rule in partitioning. Expect fewer, larger logged runs.
 
 
 def log_path():

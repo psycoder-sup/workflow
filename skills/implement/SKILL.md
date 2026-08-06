@@ -87,39 +87,46 @@ out from under your work. Never do it.
   - **On any other branch** (the normal `claude --worktree` case) → you're already isolated; never
     create a worktree or branch. Rename an auto-generated placeholder in place with
     `git branch -m feat/<slug>`, or keep it if it's already meaningful (see Branch policy above).
-- **Worth orchestrating? (hard gate — a pure parallel-width call.)** With the worktree ready,
-  compute the **parallel width** `W` = the most *independent* tasks (disjoint file sets) that could
-  run together in a single wave. Then apply the rule mechanically:
+- **Worth orchestrating? (hard gate — width AND volume.)** With the worktree ready, compute two
+  numbers from the draft partition: the **parallel width** `W` = the most *independent* tasks
+  (disjoint file sets) that could run together in a single wave, and the **volume** `V` = total
+  task count *after collapsing linear chains* (step 2's chain rule — a chain counts as one task).
+  Apply the rules mechanically; only the last branch continues past this bullet to the run-id line
+  below:
   - **`W == 1` → STOP. Do NOT orchestrate — exit the skill *before* you mint a run_id.** This covers
     both a single task *and* work that only runs one-at-a-time (every wave has one agent, i.e.
     `agents == waves` — sequential work in a parallel costume). There is no "orchestrate it anyway
     because I'm already in the worktree" branch. Tell the user the work is serial, then either do it in
     a normal session (`ExitWorktree` to drop the fresh worktree — an unchanged one auto-cleans) or
-    dispatch **one** `code-implementer` with no wave machinery, no run record, no review loop. This is
-    a pre-flight gate: run it to a verdict here, and only a `W ≥ 2` verdict continues past this bullet
-    to the run-id line below.
+    dispatch **one** `code-implementer` with no wave machinery, no run record, no review loop.
     - **Fast-path — a single feedback item or bug fix is `W == 1` by default.** "Fix feedback #N",
       "fix the `<X>` bug", one-screen / one-file corrections: this is serial single-file work wearing a
       task costume. Route it straight to one `code-implementer` and skip `/implement` entirely —
       unless you can concretely name **≥2 disjoint-file tasks that run at the same time**. (This exact
-      pattern is where the gate leaked most in practice — see below.)
-  - **`W ≥ 2` → orchestrate.** At least one wave has genuine parallel work to bank against the
-    overhead.
+      pattern is where the width gate leaked most in practice — see below.)
+  - **`W ≥ 2` but `V ≤ 4` → direct dispatch — skip the machinery.** The work is genuinely parallel
+    but too small to amortize the orchestration tax (measured below). Spawn the implementers
+    directly: parallel `Agent` calls in a single message, each with a full step-3 brief and file
+    boundary — the anti-freelance rule stays in force — then integrate and verify yourself (step 4's
+    build/test discipline, minus the logging). **No run_id, no orchlog records, no wave bookkeeping,
+    no standing review loop** — run `/code-review medium` only if the integrated diff genuinely
+    warrants fresh eyes. You keep the parallelism and the boundary safety; you drop the fixed
+    ceremony that dwarfs runs this size.
+  - **`W ≥ 2` and `V ≥ 5` → orchestrate.** Enough work to bank against the overhead — continue to
+    the run-id line below.
 
-  The same test applies after the fact: a logged run with **`peak_width == 1`** should not have used
-  `/implement`. `peak_width` (the max agents in any single wave) is stored per run and surfaced by
-  `report`; it's the honest measure of whether *any* wave ran in parallel. The older `agents == waves`
-  proxy was weaker — a lone wide wave among 1-agent waves could fool it. **Why the gate is hard, not
-  advisory:** orchestration is expensive — measured across logged runs (schema ≥1.7, where token
-  attribution is trustworthy), the orchestrator *alone* is ~77% of output tokens (planning + per-agent
-  briefs + integration + running reviews), with `code-implementer` output ~15% and review ~6%. That
-  overhead pays off **only** when parallel work runs concurrently; at `W == 1` you pay it in full and
-  bank nothing — and this **leaks in practice**: across logged runs, **1 in 4 (25%) had
-  `peak_width == 1`**, burning ~10% of all output tokens on orchestration overhead with no parallelism
-  to amortize it, and nearly all of them were single "feedback #N / bug fix" tasks. Stopping those at
-  the pre-flight gate above is exactly what this check is for. Do not soften this gate by planning less
-  to shrink the orchestrator's share — planning stays thorough. The only lever is *not orchestrating
-  serial work in the first place*.
+  **Why the gate has two dimensions.** Orchestration overhead is roughly fixed per run — planning,
+  per-agent briefs, integration passes, reviews, logging — so its cost *relative to the work*
+  explodes as runs shrink. Measured across token-attributed runs (schema ≥1.9): the median
+  orchestrator/implementer output-token ratio is **4.5× for runs of ≤5 agents** (worst observed: a
+  2-agent run at 20×), ~1× at 6–9 agents, ~1.4× at 10–16, and **0.6–0.7× at 17+** — break-even sits
+  around 6–7 agents. The width dimension catches serial work; the volume dimension catches
+  small-parallel work that passes the width test and still pays a 4–20× tax. Each dimension has an
+  after-the-fact mirror in the run log: `peak_width == 1` (violated width — 25% of pre-1.9 runs,
+  eliminated once the gate hardened) and a small `agents_total` with a high orchestrator token share
+  (violated volume — the leak this gate closes). Do not soften either dimension by planning less to
+  shrink the orchestrator's share — planning stays thorough. The only lever is *not running the full
+  machinery on work too small to pay for it*.
 - Decompose the work into independent **tasks**. If a plan file was passed as the argument,
   start from it; otherwise build the plan with the user (use plan mode for anything non-trivial).
 - Build a **file-ownership map**: for each task, the set of files it will create/modify.
@@ -140,7 +147,14 @@ N is **discovered, not forced** — only split work that is genuinely independen
 - **Hotspot files** are conflict magnets — never let two agents touch them in parallel: router/route
   tables, DI containers, barrel `index.ts`, schema/migrations, lockfiles, shared types.
 - Sequential dependency (task B needs task A's API) → N=1 for that stretch; don't fake parallelism.
-- Default isolation is **same tree** (all agents in this worktree, partitioned by file → trivial
+- **Collapse linear chains into one brief.** A run of consecutive width-1 tasks (A → B → C, nothing
+  running beside them) is **one** implementer task with a multi-step brief, not three waves — every
+  width-1 wave costs a full dispatch → report → integrate round trip and banks zero parallelism.
+  Measured: ~40% of logged runs carried 2+ single-agent waves, nearly all collapsible chains
+  (shapes like `[3,1,1,1]`). Keep a dependent task as its own wave only when something else runs
+  *beside* it in that wave, or when the chain's combined scope is too big for one agent's context —
+  then split at the narrowest interface. A collapsed chain counts as **one task for the volume gate
+  `V`** (step 1) — don't pad the count to clear the gate.
   integration). Give an agent `isolation: worktree` only when its change is large/risky enough to
   want its own checkout. A shared-file conflict is NOT solved by isolation (it just moves to merge
   time) — solve those by serializing / single-owner. **Caveat:** an `isolation: worktree` agent gets

@@ -86,16 +86,22 @@ instead. Editing source yourself races the workers and destroys the parallelism 
 
 ### 1. Plan + partition
 - Resolve the work tree first (see Preconditions) so nothing lands on `main`.
-- **Worth orchestrating? (hard gate — a pure parallel-width call.)** Compute the **parallel width**
-  `W` = the most *independent* tasks (disjoint file sets) that could run together in a single wave:
+- **Worth orchestrating? (hard gate — width AND volume.)** Compute the **parallel width** `W` = the
+  most *independent* tasks (disjoint file sets) that could run together in a single wave, and the
+  **volume** `V` = total tasks after collapsing linear chains (step 2's chain rule):
   - **`W == 1` → STOP. Do NOT orchestrate — exit the skill before you mint a run_id.** Serial work
     in a parallel costume pays full orchestration overhead and banks nothing. A single feedback item
     or bug fix is `W == 1` by default. Do it in a normal session, or hand it to one worker without
     wave machinery, run record, or review loop.
-  - **`W ≥ 2` → orchestrate.**
-  The after-the-fact mirror of this gate is `peak_width` in the run log: a run with
-  `peak_width == 1` should not have used this skill. (See `/implement` for the measured cost
-  rationale — it applies unchanged, and Orca workers add terminal-management overhead on top.)
+  - **`W ≥ 2` but `V ≤ 4` → direct dispatch:** stand up the workers in parallel with full briefs
+    (anti-freelance still applies), integrate and verify yourself — but **skip the run record, wave
+    bookkeeping, and standing review loop**. Small-parallel work can't amortize the fixed overhead.
+  - **`W ≥ 2` and `V ≥ 5` → orchestrate.**
+  The after-the-fact mirrors of this gate in the run log: `peak_width == 1` (violated width) and a
+  small `agents_total` with a high orchestrator token share (violated volume) — either means this
+  skill shouldn't have run. (See `/implement` for the measured cost rationale — break-even sits
+  around 6–7 agents there, and Orca workers add terminal-management overhead on top, so if anything
+  the bar here is higher.)
 - Decompose the work into independent **tasks**. If a plan file was passed as the argument, start
   from it; otherwise build the plan with the user (use plan mode for anything non-trivial).
 - Build a **file-ownership map**: for each task, the set of files it will create/modify.
@@ -116,6 +122,11 @@ N is **discovered, not forced** — only split work that is genuinely independen
 - **Hotspot files** are conflict magnets — never let two workers touch them in parallel:
   router/route tables, DI containers, barrel `index.ts`, schema/migrations, lockfiles, shared types.
 - Sequential dependency → N=1 for that stretch; don't fake parallelism.
+- **Collapse linear chains into one brief.** Consecutive width-1 tasks (A → B → C, nothing beside
+  them) are ONE worker with a multi-step brief — each width-1 wave is a full
+  dispatch → worker_done → integrate round trip for zero parallelism. Split only when something
+  runs beside a task in its wave or the combined scope would blow one worker's context. A collapsed
+  chain counts as one task for the volume gate `V`.
 - Default isolation is **same tree**: all workers run in this worktree, partitioned by file, so
   integration is trivial. Reserve a **separate Orca worktree worker** (`orca worktree create`, per
   the orchestration skill's worker-terminal guidance) for a large/risky standalone task only — it
