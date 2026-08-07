@@ -189,6 +189,9 @@ to them, so the implementer contract must travel **inside the spec**. Every brie
 <the exact build / test / lint commands to run for this scope>
 ## Rules
 - Read before you write; follow surrounding conventions; reuse existing utilities.
+- On a design fork or anything the acceptance criteria don't pin down, consult the coordinator via
+  `ask` BEFORE proceeding — a one-paragraph ruling is far cheaper than a reworked wrong guess.
+  Deviate silently only on trivia, and record it under deviations.
 - No scope expansion; tempting adjacent improvements go under follow_ups.
 - Do not commit, push, branch, or open PRs — you only change the working tree.
 - Self-verify before reporting; never claim done on a red build.
@@ -223,7 +226,13 @@ criteria and a clean file boundary, the task isn't ready — refine the partitio
   `blockers`. A `blockers` entry naming a cross-boundary need means your partition was off — handle
   it (reassign ownership, add a serial step), don't ignore it.
 - Run the **full** build + test suite yourself in the work tree (running commands is orchestration,
-  not coding).
+  not coding) — **except long-log suites (e2e / UI / integration)**: delegate those to a dedicated
+  **e2e worker** (sonnet tier, same terminal mechanics as any worker; reusable across waves). Its
+  brief: run the exact suite command, triage any failures to a suspected cause, and report a compact
+  verdict — pass/fail, failing case names, suspected cause, ≤20 lines, **never raw logs**. Every
+  token of e2e output that lands in this session is re-read on every subsequent turn at
+  orchestrator-tier rates; a triaged verdict is orders of magnitude smaller. Fixes still route to a
+  **code** worker as usual (the e2e worker never fixes).
 - (Optional) spawn a `verifier` subagent (built-in `Agent` tool, `model: "sonnet"`) against the
   acceptance criteria for a second opinion — read-only, so it needs no Orca provenance.
 - Anything red, or any `needs-attention`/`fail` verdict → **re-delegate a fix** (never patch

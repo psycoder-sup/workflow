@@ -32,6 +32,12 @@ here.** If CI goes red or a review is required, you STOP and report — remediat
 Right after a successful `/implement`: the milestone branch lives in a dedicated worktree, its
 build/tests are green locally, and you're ready to ship it to `main`. Not for unverified work.
 
+**Prefer a fresh (or cleared) session over the tail of a long orchestrator session.** The skill
+already runs on the cost tier (`model: sonnet` above), but CI polling is many turns, and every turn
+re-reads whatever context the session is carrying. Everything this skill needs is on disk and in
+git — the branch, the plan, the milestone — so nothing is lost by `/clear`-ing first or running it
+in a cheap child terminal.
+
 ## Preconditions
 - Run from (or knowing) the **milestone worktree branch**. If `git branch --show-current` is
   `main`/`master`, STOP — there's nothing to ship.

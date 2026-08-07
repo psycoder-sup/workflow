@@ -211,6 +211,10 @@ Each implementer gets a self-contained brief — implementers share no memory, s
 <pointers to existing code, the pattern to follow, examples>
 ## Verification
 <the exact build / test / lint commands to run for this scope>
+## Rules
+- If the acceptance criteria leave a real design fork open, STOP and report it as a blocker rather
+  than guessing — a re-dispatch with a ruling beats a reworked wrong guess. Note trivial departures
+  under deviations.
 ## Output
 Return the IMPLEMENTER REPORT block exactly as your agent definition specifies.
 ```
@@ -222,7 +226,13 @@ criteria and a clean file boundary, the task isn't ready — refine the partitio
 - Collect each implementer's IMPLEMENTER REPORT. Read `verdict`, `build`, `tests`, `blockers`.
 - A `blockers` entry naming a cross-boundary need means your partition was off — handle it (reassign
   ownership, add a serial step), don't ignore it.
-- Run the **full** build + test suite yourself (running commands is orchestration, not coding).
+- Run the **full** build + test suite yourself (running commands is orchestration, not coding) —
+  **except long-log suites (e2e / UI / integration)**: delegate those to a `verifier` subagent
+  (`model: "sonnet"` — it runs commands and reads, never edits). Its brief: run the exact suite
+  command, triage any failures to a suspected cause, and report a compact verdict — pass/fail,
+  failing case names, suspected cause, ≤20 lines, **never raw logs**. Every token of e2e output that
+  lands in this session is re-read on every subsequent turn at orchestrator-tier rates; a triaged
+  verdict is orders of magnitude smaller. Fixes still route to a `code-implementer` as usual.
 - (Optional) spawn a `verifier` subagent against the acceptance criteria for a second opinion. It
   does read-only acceptance-checking — no code output, no taste — so pass `model: "sonnet"`; reserve
   `model: "opus"` for criteria that hinge on subtle correctness. (The reviews in step 5 pick their

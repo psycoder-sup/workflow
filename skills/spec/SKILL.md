@@ -2,13 +2,14 @@
 name: spec
 description: >
   Turn a rough feature idea into a written PRD before any code. Interview one question at a time
-  (only for gaps inference can't fill), surface assumptions, then write docs/spec/<slug>.md covering
-  objective, structure, testing, and boundaries. The define stage that feeds /taskplan then /implement.
+  (only for gaps inference can't fill), surface assumptions, write docs/spec/<slug>.md covering
+  objective, structure, testing, and boundaries, then delegate a fresh-eyes review (opus) that
+  revises the doc in place. The define stage that feeds /taskplan then /implement.
   Use at the START of a non-trivial feature, when the "what/why" isn't yet pinned down.
 trigger: /spec
 user-invocable: true
 argument-hint: "<feature description | rough idea | path to notes>"
-allowed-tools: ["Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "WebFetch"]
+allowed-tools: ["Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "WebFetch", "Agent"]
 ---
 
 # /spec
@@ -88,8 +89,29 @@ Anything still unresolved. Empty when the spec is `ready`.
 
 Keep it falsifiable: concrete cases over adjectives. If a section is genuinely N/A, say so — don't pad.
 
-### 5. Report + hand off
-Print the path and the status (draft/ready), and the next step: **`/taskplan docs/spec/<slug>.md`**.
+### 5. Fresh-eyes review — delegated, revises in place
+Spawn ONE `general-purpose` subagent with `model: "opus"` to review the draft with fresh eyes. Do
+NOT have it return findings for you to apply — that round-trips the whole review through this
+session's context and turns you into the editor. Instead, its prompt:
+
+- Read `docs/spec/<slug>.md` plus the same repo context step 1 named (docs/, status.json, relevant
+  decisions).
+- Check: ambiguity (could an implementer guess wrong?), unfalsifiable requirements, missing
+  non-goals, contradictions with repo docs or locked decisions, untestable acceptance.
+- **Edit the spec file in place** to fix what is clearly wrong or missing.
+- Return ONLY two compact lists — no restatement of the document:
+  `CHANGELOG:` each edit as one line (what changed + why);
+  `OPEN ISSUES:` judgment calls it deliberately did not decide (conflicts with locked decisions,
+  scope questions only the user can settle).
+
+Then **adjudicate, don't re-review**: skim the changelog against the file, revert any change you
+reject (Edit is fine — the spec is an orchestration artifact, not source code), and resolve OPEN
+ISSUES with the user via AskUserQuestion. The user's manual read of the finished spec remains the
+gate for `draft → ready` — this step feeds that gate; it does not replace it.
+
+### 6. Report + hand off
+Print the path and the status (draft/ready), the review changelog summary, and the next step:
+**`/taskplan docs/spec/<slug>.md`**.
 
 ## Rules (inherited from the define discipline)
 - **Surface assumptions** before building on them.
@@ -108,4 +130,6 @@ Print the path and the status (draft/ready), and the next step: **`/taskplan doc
 - [ ] `docs/spec/<slug>.md` exists with every section (N/A explicitly where it applies).
 - [ ] Objective is one clear outcome; non-goals are stated.
 - [ ] Assumptions were surfaced; open questions are empty if status is `ready`.
+- [ ] Fresh-eyes review ran (delegated, opus); changelog adjudicated; OPEN ISSUES resolved or
+      carried into Open questions.
 - [ ] Reported the path and pointed at `/taskplan docs/spec/<slug>.md`.
