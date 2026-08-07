@@ -92,7 +92,9 @@ wave, and **`V`** = the task count after collapsing.
   session instead." Don't invent fake parallelism to dodge the gate.
 
 ### 7. Write `docs/plan/<slug>.json`
-Conform to `docs/pm/schema/plan.schema.json` (if the repo has it — project-kit repos do). Include
+Conform to `docs/pm/schema/plan.schema.json` (project-kit scaffolds it; in a repo without one, read
+the shape from the plugin's template at
+`${CLAUDE_PLUGIN_ROOT}/skills/project-kit/templates/schema/plan.schema.json`). Include
 `slug`, `spec` (path or ""), `createdWith`,
 `defaultMethod`, `tasks[]`, `waves[]`, `parallelWidth`. Then validate it parses and matches the
 schema (`python3 -c "import json,sys; json.load(open(sys.argv[1]))" docs/plan/<slug>.json`; if

@@ -22,15 +22,17 @@
     },
     "milestones": {
       "type": "array",
-      "description": "Bigger checkpoints — one-clause titles. Flip `done` to true when reached; completed milestones drop their rationale (it lives in the ADR / shipped entry).",
+      "description": "Bigger checkpoints — one-clause titles. Flip `done` to true when reached; completed milestones drop their rationale (it lives in the ADR / shipped entry). A milestone carrying `exitCriteria`/`githubMilestone` acts as a gate: /cleanup checks ships against it and reconciles the GitHub milestone on merge.",
       "items": {
         "type": "object",
         "required": ["title", "done"],
         "additionalProperties": false,
         "properties": {
           "title": { "type": "string", "description": "Milestone name, e.g. 'M1 — first usable slice'." },
-          "done": { "type": "boolean", "description": "Whether this milestone has been reached." },
-          "target": { "type": "string", "description": "Optional target date or period, e.g. '2026-07'. Empty string if none." }
+          "done": { "type": "boolean", "description": "Whether this milestone has been reached. If `githubMilestone` is set, the invariant is: `done` is true iff that GitHub milestone is closed — /cleanup enforces this on merge." },
+          "target": { "type": "string", "description": "Optional target date or period, e.g. '2026-07'. Empty string if none." },
+          "exitCriteria": { "type": "string", "description": "Optional falsifiable condition that flips `done` — /cleanup checks a ship against this before marking the gate done. Empty string if none." },
+          "githubMilestone": { "type": "integer", "description": "Optional GitHub milestone number tracking this gate. When its open-issue count hits 0 after a merge and `done` was flipped, /cleanup closes it. Omit if not using GitHub milestones." }
         }
       }
     },

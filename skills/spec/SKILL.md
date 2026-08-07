@@ -9,7 +9,7 @@ description: >
 trigger: /spec
 user-invocable: true
 argument-hint: "<feature description | rough idea | path to notes>"
-allowed-tools: ["Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "WebFetch", "Agent"]
+allowed-tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "AskUserQuestion", "WebFetch", "Agent"]
 ---
 
 # /spec

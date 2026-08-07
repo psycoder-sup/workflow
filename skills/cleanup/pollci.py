@@ -33,6 +33,7 @@ def main():
     max_polls = int(sys.argv[3]) if len(sys.argv) > 3 else 40
     interval = int(sys.argv[4]) if len(sys.argv) > 4 else 30
 
+    first_match = None  # first poll where the head matched; anchors the zero-checks grace window
     for i in range(max_polls):
         try:
             out = subprocess.run(
@@ -54,9 +55,11 @@ def main():
               f"state={d.get('mergeStateStatus')} checks={concl}", flush=True)
 
         if head == target and not pending:
-            # No checks yet? Give GitHub a couple of polls to register any before deciding
-            # this is a genuinely check-less (paths-filtered) PR.
-            if not roll and i < 2:
+            if first_match is None:
+                first_match = i
+            # No checks yet? Give GitHub a couple of polls after the head first matched to
+            # register any, before deciding this is a genuinely check-less (paths-filtered) PR.
+            if not roll and i - first_match < 2:
                 time.sleep(interval)
                 continue
             print("=== CI CONCLUSIVE ===", flush=True)

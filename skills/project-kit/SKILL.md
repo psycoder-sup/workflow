@@ -131,6 +131,7 @@ Copy these **verbatim** (no substitution) into the target — they are tooling, 
 - `docs/pm/dashboard/serve.py`   ← `templates/dashboard/serve.py`
 - `docs/pm/schema/status.schema.json`   ← `templates/schema/status.schema.json`
 - `docs/pm/schema/decision.schema.json` ← `templates/schema/decision.schema.json`
+- `docs/pm/schema/plan.schema.json`     ← `templates/schema/plan.schema.json` (the shape `/taskplan` writes to `docs/plan/` and `/implement` consumes)
 - **`--full` only:** `docs/pm/schema/project-summary.schema.json` and `docs/pm/schema/prd.schema.json`.
 
 These are **skip-if-exists** like the source docs — never clobber a dashboard the user has customized.

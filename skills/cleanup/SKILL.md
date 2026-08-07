@@ -78,7 +78,10 @@ in a cheap child terminal.
     summary + verification, and `commit` = `""` (the merge SHA isn't known yet and is intentionally
     **not** recorded — the PR link is the durable pointer; recording the merge SHA would force a
     post-merge edit, i.e. exactly the direct push we're eliminating); bump `lastUpdated`. **If this
-    ship satisfies a gate's `exitCriteria`, flip that gate's `done: true` here** — its GitHub
+    ship satisfies a gate's `exitCriteria`, flip that gate's `done: true` here** — a *gate* is a
+    `milestones[]` entry carrying the optional `exitCriteria`/`githubMilestone` fields (shape:
+    `docs/pm/schema/status.schema.json`); the milestone steps below apply only when those fields are
+    present. Its GitHub
     milestone gets closed post-merge (step 5), and the invariant is *a gate is `done` iff its
     `githubMilestone` is closed*, so the two must move together. **Do NOT `trim shipped` here** — trimming rewrites the array tail and is the single biggest cross-session
     collision; leave it to an occasional single-writer chore (step 5). Validate:
@@ -107,11 +110,13 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/cleanup/pollci.py <PR#> <pushed-sha7>
   "head matches + no checks after a short grace" as conclusive.
 
 ### 3. Merge when green (automatic)
-Merge **iff** every check is `SUCCESS`, `mergeable=MERGEABLE`, and `mergeStateStatus=CLEAN`:
+Merge **iff** every check concluded `SUCCESS`, `SKIPPED`, or `NEUTRAL` (paths-filtered repos
+routinely skip checks — a skipped check is not a red one), `mergeable=MERGEABLE`, and
+`mergeStateStatus=CLEAN`:
 `gh pr merge <PR#> --merge` (match the repo's merge style — this repo uses merge commits).
 
 - **STOP and report, do NOT merge, when:**
-  - any check `FAILURE` → link the run + name the failing step;
+  - any check `FAILURE`/`ERROR`/`CANCELLED`/`TIMED_OUT` → link the run + name the failing step;
   - `DIRTY`/`CONFLICTING` → rebase onto `main`, resolve, push, and go back to step 2. The conflict
     is now often in `status.json` (another session shipped first): re-apply your now-removal +
     `shipped` prepend on top of their entries, keep both shipped items, re-validate the JSON;

@@ -5,7 +5,7 @@
   "now": ["{{NOW}}"],
   "next": ["{{NEXT}}"],
   "milestones": [
-    { "title": "[M1 — first milestone: rename or delete]", "done": false, "target": "" }
+    { "title": "[M1 — first milestone: rename or delete]", "done": false, "target": "", "exitCriteria": "" }
   ],
   "blocked": [],
   "shipped": [

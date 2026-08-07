@@ -8,7 +8,7 @@ description: >
 trigger: /implement
 user-invocable: true
 argument-hint: "<work description or path to a plan file>"
-allowed-tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "Agent", "AskUserQuestion", "TaskCreate", "TaskUpdate", "EnterWorktree"]
+allowed-tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "Agent", "AskUserQuestion", "TaskCreate", "TaskUpdate", "EnterWorktree", "ExitWorktree", "Skill"]
 ---
 
 # /implement
@@ -155,6 +155,8 @@ N is **discovered, not forced** — only split work that is genuinely independen
   *beside* it in that wave, or when the chain's combined scope is too big for one agent's context —
   then split at the narrowest interface. A collapsed chain counts as **one task for the volume gate
   `V`** (step 1) — don't pad the count to clear the gate.
+- **Default isolation is same tree**: all implementers run in this worktree, partitioned by file
+  ownership, so their outputs combine without a merge step (the file partition IS the
   integration). Give an agent `isolation: worktree` only when its change is large/risky enough to
   want its own checkout. A shared-file conflict is NOT solved by isolation (it just moves to merge
   time) — solve those by serializing / single-owner. **Caveat:** an `isolation: worktree` agent gets
@@ -255,18 +257,20 @@ criteria and a clean file boundary, the task isn't ready — refine the partitio
 
 ### 5. Review
 Both `/code-review` and `/security-review` spawn their OWN subagents internally, and subagents can't
-spawn subagents — so **you (the orchestrator) must run each one yourself, directly in this session;
-never delegate a review to a `code-implementer`** (it would fail or silently degrade). Invoking them
-is an orchestrator action, like running build/test.
+spawn subagents — so **never delegate a review to a `code-implementer`** (it would fail or silently
+degrade). Reviews run from this session — but the two commands differ in *who* can invoke them:
 
-**You judge which of the two this change needs, and run each you deem necessary:**
-- **`/code-review medium`** — warranted for essentially any run with real code changes; run it
-  unless the diff is trivial/non-code (docs-only, pure config). **Always pass `medium`** — the no-arg
-  default is `xhigh`, which burns far more tokens than a routine review needs; only go higher
-  (high/max/ultra) when the user explicitly asks.
+**You judge which of the two this change needs, then run each you deem necessary:**
+- **`/code-review medium`** — warranted for essentially any run with real code changes; skip only
+  when the diff is trivial/non-code (docs-only, pure config). It is `disable-model-invocation`, so
+  the Skill tool cannot call it — **pause and ask the user to type `/code-review medium`** in this
+  session (one line: "ready for review — please run `/code-review medium`"). **Always ask for
+  `medium`** — the no-arg default is `xhigh`, which burns far more tokens than a routine review
+  needs; only suggest higher (high/max/ultra) when the user explicitly asks.
 - **`/security-review`** — warranted when the diff touches a security-relevant surface: auth/authz,
   crypto, secrets, user-input handling, file/path/network I/O, deserialization, or SQL. Skip it when
-  there's no plausible security impact (docs, pure refactors, test-only).
+  there's no plausible security impact (docs, pure refactors, test-only). This one IS
+  model-invocable — run it yourself via the Skill tool.
 
 - Route every finding back to a `code-implementer` as a fix task (anti-freelance still applies); log
   each such fix agent with `--review-fix` — it's healthy follow-up, not `--rework`.
