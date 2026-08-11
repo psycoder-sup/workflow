@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "workflow",
-  "description": "Spec-driven delivery pipeline plugin: spec -> taskplan -> implement -> cleanup, plus project-kit scaffolding.",
+  "description": "Spec-driven delivery pipeline plugin: spec -> taskplan -> implement -> cleanup, plus /frontier ticket-level parallelism and project-kit scaffolding.",
   "owner": {
     "name": "SangUk Park"
   },

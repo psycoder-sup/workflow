@@ -1,13 +1,15 @@
 ---
 name: cleanup
 description: >
-  Ship a completed /implement milestone: open a PR for the worktree branch (auto-closing the GitHub
-  issues it resolves), poll CI until conclusive (never cancel — self-hosted runners can be slow),
-  auto-merge when every check is green and the PR is MERGEABLE/CLEAN, then close the emptied GitHub
-  milestone and clean up the worktree + branches (UNLESS running inside an Orca terminal, which owns
-  the worktree lifecycle — then teardown is skipped). In project-kit repos the milestone's
-  status.json now->shipped bump rides INSIDE the milestone PR (no direct push to main), so parallel
-  sessions never race a shared-doc write. Run AFTER a successful /implement when the branch's work is
+  Ship completed work off a worktree branch — an /implement milestone, or a single /frontier ticket:
+  open a PR for the branch (auto-closing the GitHub issues it resolves), poll CI until conclusive
+  (never cancel — self-hosted runners can be slow), auto-merge when every check is green and the PR
+  is MERGEABLE/CLEAN, then close the emptied GitHub milestone and clean up the worktree + branches
+  (UNLESS running inside an Orca terminal, which owns the worktree lifecycle — then teardown is
+  skipped). In project-kit repos the milestone's status.json now->shipped bump rides INSIDE the PR
+  (no direct push to main), so parallel sessions never race a shared-doc write; repos without
+  docs/pm/status.json skip that layer entirely and let `Closes #<n>` do the bookkeeping. Run AFTER a
+  successful /implement, or at the end of a /frontier worker's ticket, when the branch's work is
   committed and verified. It ships what's there — it never writes or fixes code; a red CI or required
   review ends the skill with a report, not a patch.
 trigger: /cleanup
@@ -39,11 +41,12 @@ git — the branch, the plan, the milestone — so nothing is lost by `/clear`-i
 in a cheap child terminal.
 
 ## Preconditions
-- Run from (or knowing) the **milestone worktree branch**. If `git branch --show-current` is
+- Run from (or knowing) the **worktree branch being shipped** — an `/implement` milestone branch, or
+  a `/frontier` ticket worktree (`ticket-<n>-<slug>`). If `git branch --show-current` is
   `main`/`master`, STOP — there's nothing to ship.
-- Work is committed and already green locally (that was `/implement`'s job). If there are
-  uncommitted changes, commit them with a real message first; if you can't tell they're finished,
-  STOP and report rather than guessing.
+- Work is committed and already green locally (that was `/implement`'s or the ticket worker's job).
+  If there are uncommitted changes, commit them with a real message first; if you can't tell they're
+  finished, STOP and report rather than guessing.
 - **Everything lands via the PR — no direct pushes to `main`, not even docs.** `main` is protected,
   and (learned the hard way) direct-pushing `status.json` from N parallel sessions turns one file
   into a multi-writer hotspot that conflicts on nearly every concurrent ship — `lastUpdated`,
@@ -67,12 +70,29 @@ in a cheap child terminal.
 - Push the code: `git push -u origin "$branch"` (add `--force-with-lease` if you rebased).
 - `gh pr create --base main --head "$branch" --title "…" --body-file …` — body = what shipped + how
   it was verified; end with the repo's PR footer convention. **Capture the PR number AND URL.**
-- **(GitHub milestones) Auto-close the issues this milestone resolves.** In the PR body, add a
-  `Closes #<n>` line for every GitHub issue this PR completes (from the plan / the gate's milestone),
-  so the merge closes them automatically — no separate `gh issue close` call, and the issues link back
-  to the PR. Don't list issues you only partially touched; only ones this ship actually finishes.
+- **Auto-close the issues this ship resolves.** In the PR body, add a `Closes #<n>` line for every
+  GitHub issue this PR completes, so the merge closes them automatically — no separate
+  `gh issue close` call, and the issues link back to the PR. Don't list issues you only partially
+  touched; only ones this ship actually finishes.
+  **Resolve `<n>` in this order, first hit wins:**
+  1. **The worktree's linked issue** (the `/frontier` ticket path — there is no plan file). Orca
+     stores it from `worktree create --issue <n>`:
+     `ORCA worktree show --worktree active --json` → the linked GitHub issue number. (`ORCA` = the
+     executable resolved per the orca-cli rules; inside an Orca terminal it's `orca`. Skip this
+     source if the CLI isn't available — don't treat its absence as an error.)
+  2. **The branch / worktree name**, when it carries the ticket — `/frontier` names worktrees
+     `ticket-<n>-<slug>`, so parse `<n>` out of `git branch --show-current`.
+  3. **The plan / the gate's milestone** (the `/taskplan` → `/implement` path).
+
+  If none resolve, **ask** rather than opening a PR that closes nothing — a ticket left open after
+  its work merged is invisible breakage: the next `/frontier` run keeps treating it as a live
+  blocker, so everything downstream of it stalls.
 - **(project-kit) Fold the `status.json` now→shipped bump into this PR** — do NOT save it for after
-  the merge:
+  the merge. **Gate this on the file: if `docs/pm/status.json` doesn't exist, skip this bullet
+  entirely and say so in one line.** Repos on the `/frontier` ticket flow track state in GitHub
+  Issues alone — there's no milestone layer to bump, and the `Closes #<n>` above is the whole
+  bookkeeping. Don't scaffold `docs/pm/` to satisfy the step; that's `/project-kit`'s call, not
+  a ship-time side effect.
   - **Surgically** edit `docs/pm/status.json` (not a full reserialize): remove the milestone from
     `now`; prepend a `shipped` entry — `date`, `link` = the PR URL you just captured, a one-line
     summary + verification, and `commit` = `""` (the merge SHA isn't known yet and is intentionally
@@ -144,6 +164,10 @@ routinely skip checks — a skipped check is not a red one), `mergeable=MERGEABL
   `gh cache delete`, remove scratch containers), but nothing shared.
 
 ### 5. (project-kit) status.json + GitHub milestone — reconcile the two layers
+**Skip this whole step when `docs/pm/status.json` doesn't exist** — on the `/frontier` ticket flow
+the merge already closed the ticket via `Closes #<n>`, and that's the entire reconciliation. Report
+"no project-kit layer — ticket closed by the merge" and you're done.
+
 The `status.json` now→shipped bump merged as part of the milestone PR (step 1) — nothing to push to
 `main`. The merge also auto-closed the issues named `Closes #<n>` in the PR body (step 1).
 - **Confirm it landed:** on the freshly-synced `main` from step 4, `git log -1 --stat` should show

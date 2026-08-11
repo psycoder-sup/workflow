@@ -9,6 +9,18 @@ Claude Code plugin: a spec-driven delivery pipeline.
                           build)
 ```
 
+Plus a second delivery path for deep, coupled work — GitHub tickets fanned out to parallel Orca
+worktrees, one agent per ticket:
+
+```
+(mattpocock/skills)                    (this plugin)
+/to-spec  →  /to-tickets       →       /frontier  →  /cleanup
+(1 issue)    (N issues +               (N worktrees,  (PR "Closes #n",
+              blocked_by edges)         1 agent each)   CI, merge)
+```
+
+See [docs/flows/tickets-to-orca.md](docs/flows/tickets-to-orca.md) for when to take which path.
+
 Plus `/project-kit` — scaffolds `docs/pm/` project management (status, decisions, schemas, dashboard) into any repo.
 
 ## Skills
@@ -19,6 +31,7 @@ Plus `/project-kit` — scaffolds `docs/pm/` project management (status, decisio
 | `/taskplan` | plan | Decompose a spec into atomic tasks with file ownership, model tier, and method; derive parallel waves into `docs/plan/<slug>.json`. |
 | `/implement` | build | Orchestrate the plan: file-disjoint waves of parallel `code-implementer` subagents, integrate, verify, review. Logs every run (`orchlog.py`). |
 | `/implement-orca` | build | Same orchestration doctrine, but workers are Orca-dispatched `claude` CLI terminals (via the official `orchestration` skill): visible panes + runtime task/dispatch provenance. |
+| `/frontier` | build | Ticket-level parallelism: query GitHub for takeable tickets (open, `ready-for-agent`, unblocked, unassigned), claim by assignee, dispatch one Orca worktree + `claude` worker per ticket. Full handoff — no coordinator. |
 | `/cleanup` | ship | Open the PR, poll CI to conclusive (`pollci.py`), auto-merge on green, tear down the worktree + branches. |
 | `/project-kit` | setup | Scaffold `docs/pm/` (status.json, decisions, schemas, dashboard) and the CLAUDE.md block. |
 
