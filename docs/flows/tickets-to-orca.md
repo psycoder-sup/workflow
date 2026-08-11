@@ -152,6 +152,16 @@ orca repo add --path /abs/repo --json
   `ready-for-agent` and `/to-tickets` labels every *ticket* the same, so the label alone can't tell a
   whole feature from one slice. Scoping plus a hard "no acceptance criteria → not a ticket" guard is
   what stops a spec being dispatched as if it were a ticket.
+- **Nothing reaps worktrees except `/frontier`.** `/cleanup` refuses to remove its own worktree
+  inside an Orca terminal — correct, since a session can't delete the directory it's running in —
+  and reports it "left for Orca to manage". Orca is a worktree manager, not a reaper, so that
+  hand-off has no receiver. `/frontier` sweeps at the start of every run: closed issue + merged
+  branch + in-scope worktree → remove. Never with `--force`.
+- **A stranded PR has no owner.** `/cleanup` resolves conflicts only while it's still running, so
+  worker A merging can flip worker B's already-open PR to CONFLICTING an hour after B exited.
+  `/frontier`'s sweep surfaces those and, on approval, sends a rebase-only worker into the existing
+  worktree. That brief is deliberately narrow — the branch was already reviewed and green, and a
+  fixup worker that "improves" things turns an approved change into an unreviewed one.
 - **`--max-workers N` is a ceiling on concurrent workers, not on one run's dispatch.** It subtracts
   what's already in flight, so repeated runs can't accumulate past `N`. When the frontier exceeds the
   ceiling, tickets are ranked by `blocking` count descending — finishing the ticket that gates three

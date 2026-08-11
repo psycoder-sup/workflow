@@ -108,7 +108,51 @@ Specifically stop and report if:
 - **No file-ownership section.** That's the wave path's safety boundary. Here the worktree *is* the
   boundary, and a ticket legitimately touches every layer — an artificial file list would just make
   the worker stop and ask.
-- **No model tier.** One ticket is a whole vertical slice with real design judgment in it; the
-  worker runs at session default rather than being routed down a tier.
+- **No file-ownership section.** That's the wave path's safety boundary. Here the worktree *is* the
+  boundary.
 - If the repo has no `docs/agents/domain.md` (`/setup-matt-pocock-skills` never ran), drop that
   paragraph rather than pointing the worker at a file that isn't there.
+
+---
+
+## Rebase-only brief
+
+For a **stranded PR** — one that went `CONFLICTING`/`DIRTY` after its original worker exited (Step
+1b). Sent into the ticket's **existing** worktree, never a new one.
+
+Keep it this narrow on purpose. The ticket already passed review and CI once; the only thing that
+changed is `main`. A fixup worker that also "improves" what it finds turns a rebase into an
+unreviewed second change, on a branch whose first change was already approved.
+
+```text
+Your ONLY job is to make PR #<pr> mergeable again. It went CONFLICTING when another ticket merged
+into main. The code here was already green and reviewed — nothing about it is wrong.
+
+Do exactly this:
+
+  git fetch origin main
+  git rebase origin/main
+
+Resolve each conflict by INTENT, not by picking lines. For each hunk, work out what each side was
+trying to do — read the commit messages, and read the originating issue on both sides if you need to
+— then write the resolution that preserves both intentions. Never `--abort`; finish the rebase.
+
+Two conflicts to expect in this repo:
+- **A shared doc** (`CONTEXT.md`, `docs/adr/`) — if an ADR number was taken while you were away,
+  renumber yours to the next free one and fix every reference: file name, the `number` field, the
+  index row, any code comment pointing at it.
+- **A component both tickets touched** — keep both behaviours. If they genuinely cannot coexist,
+  STOP and report; that is a design conflict and it is not yours to settle.
+
+Then:
+  git push --force-with-lease
+  /cleanup
+
+Do NOT change anything the rebase did not force you to change. No refactors, no renames, no drive-by
+fixes, no new tests. If you believe something else is broken, report it and leave it — it becomes its
+own ticket.
+
+If the rebase needs a judgment call you cannot make from the two sides' primary sources, stop and
+report with the conflicting hunks. A stalled rebase someone can read beats a resolution that quietly
+drops one side's work.
+```

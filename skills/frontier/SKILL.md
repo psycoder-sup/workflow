@@ -106,13 +106,88 @@ Children are the issues whose body carries a `## Parent` section naming the scop
 that's the section `/to-tickets` writes:
 
 ```bash
-gh issue list --state open --json number,title,body,labels,assignees \
+gh issue list --state all --json number,title,body,state,labels,assignees \
   --jq '[.[] | select(.body | test("## Parent[\\s\\S]*#<parent>\\b"))]'
 ```
+
+**Fetch `--state all`, not just open.** Step 1b's reap works on *closed* children — an open-only
+query makes every finished worktree invisible to the sweep, which is the failure that leaves them
+piling up. Step 2 filters to open when it computes the frontier.
 
 If the repo uses **native sub-issues** instead (`gh api repos/{owner}/{repo}/issues/<parent>/sub_issues`),
 prefer them — they render the tree in GitHub's own UI. `/to-tickets` doesn't create them by default,
 so an empty result means fall back to the `## Parent` parse. Say which you used.
+
+## Step 1b — Sweep: reap finished worktrees, surface stranded PRs
+
+Run this **before** computing the frontier, every time. In a handoff flow nobody else can: a worker
+that has exited owns nothing, and `/cleanup` deliberately leaves its worktree behind —
+
+> *"Orca owns the worktree lifecycle — do NOT remove the worktree or delete the local branch here…
+> report 'worktree + local branch left for Orca to manage'"*
+
+That hand-off has no receiver. Orca is a worktree manager, not a reaper, so merged worktrees
+accumulate until something removes them. `/frontier` is the only recurring process in this flow, so
+it's the something. Under `--max-workers` this compounds: a dead worktree's ticket keeps its
+assignee and silently holds a slot.
+
+### Reap — closed issue + merged branch + surviving worktree
+
+For each child issue that is **closed**, check whether its worktree still exists
+(`ORCA worktree list --json`, or the `issue:<n>` selector):
+
+```bash
+ORCA worktree rm --worktree issue:<n> --json
+```
+
+**Three conditions, all required, no exceptions:**
+
+1. The issue is **closed**.
+2. Its branch is **actually merged** — confirm via the PR (`gh pr list --head ticket-<n>-<slug> --state merged`)
+   or `git branch --merged origin/main`. An issue closed by hand with unmerged work is someone's
+   in-progress state, not garbage.
+3. The worktree belongs to **this scope**. `worktree list` shows every session's worktrees; other
+   parents' tickets and hand-made worktrees are not yours to remove.
+
+**Never pass `--force`, and never reap an open issue's worktree.** Force exists to discard
+uncommitted work, which is exactly the thing you cannot judge from here. If a worktree looks
+reapable but has uncommitted changes, report it and move on.
+
+### Surface stranded PRs
+
+`/cleanup` resolves conflicts **only while it is still running**. Once a worker exits, its PR has no
+owner — so worker A merging can flip worker B's already-open PR to `CONFLICTING` an hour later with
+nobody watching. For each in-flight ticket:
+
+```bash
+gh pr list --head ticket-<n>-<slug> --state open \
+  --json number,mergeStateStatus,mergeable,url
+```
+
+- `CONFLICTING` / `DIRTY` → **stranded**. Report it with the PR link.
+- `BEHIND` → usually self-healing; note it, don't act.
+- No open PR and no live worktree, but the issue is still assigned → the worker died before
+  shipping. Report as **possibly stale** (Step 3 already counts these toward the ceiling); never
+  unassign it yourself.
+
+### Re-dispatch a stranded PR — only on approval
+
+A stranded PR needs a rebase, not a rebuild. **Ask first**, then send a worker into the **existing**
+worktree — never create a second one for the same ticket:
+
+```bash
+ORCA terminal create --worktree issue:<n> --title fixup-<n> --command 'claude' --json
+ORCA terminal wait --terminal <handle> --for tui-idle --timeout-ms 60000 --json
+ORCA terminal send --terminal <handle> --text "<rebase-only brief>" --enter --json
+```
+
+Use the rebase-only brief in
+[references/worker-brief.md](references/worker-brief.md#rebase-only-brief) — it is deliberately
+narrow: resolve the conflict by intent, push, re-run `/cleanup`, change nothing else. A fixup worker
+that "improves" code while it's in there is how a rebase becomes a review.
+
+Report the sweep before moving on: reaped, stranded, possibly stale. If everything was quiet, one
+line saying so.
 
 ## Step 2 — Compute the frontier
 
@@ -394,6 +469,12 @@ If the user wants supervision, that's a different flow (`/implement-orca`).
 - **Never silently truncate.** A capped ticket is deferred and named, not dropped.
 - **Never unassign a stale claim yourself.** Report it; a dead worker and a live one on another
   machine look identical from here.
+- **Sweep before you dispatch.** Nobody else reaps: `/cleanup` leaves the worktree for "Orca to
+  manage", and Orca doesn't reap.
+- **Reap only on closed + merged + in-scope, and never `--force`.** Force discards uncommitted work,
+  which is the one thing you can't judge from here.
+- **A fixup worker rebases and nothing else.** Improving code during a rebase turns an approved
+  change into an unreviewed one.
 - **Delegate the commands, own the briefs.** You decide; a cheaper agent types.
 - **Never dispatch an assigned ticket** without the user explicitly overriding — someone else holds
   it.
@@ -419,6 +500,10 @@ If the user wants supervision, that's a different flow (`/implement-orca`).
   without it.
 - A worker never responds to its brief → on Path B you probably skipped `terminal wait --for
   tui-idle` and the prompt was swallowed. Re-check the handle before re-sending; never dual-send.
+- **Worktrees piling up across runs** → the sweep isn't running, or it's failing the merged check
+  silently. `/cleanup` will never remove them; that's by design.
+- **A PR sat CONFLICTING for hours** → its worker exited. Nothing self-heals in a handoff flow;
+  that's what Step 1b's re-dispatch is for.
 - **The cap keeps reporting 0 available but no worker is doing anything** → stale claims are holding
   the ceiling. Check the "possibly stale" list; an assigned ticket with no live worktree never clears
   itself.
