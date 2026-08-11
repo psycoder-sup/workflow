@@ -8,7 +8,7 @@ description: >
   after /to-tickets has published a dependency-linked ticket set to GitHub Issues.
 trigger: /frontier
 user-invocable: true
-argument-hint: "<parent issue number, e.g. 234> [--max-workers N] [--dry-run]"
+argument-hint: "<parent issue number, e.g. 234> [--max-workers N] [--yes] [--dry-run]"
 allowed-tools: ["Read", "Bash", "Glob", "Grep", "AskUserQuestion", "TaskCreate", "TaskUpdate", "Skill", "Agent"]
 ---
 
@@ -172,8 +172,9 @@ gh pr list --head ticket-<n>-<slug> --state open \
 
 ### Re-dispatch a stranded PR — only on approval
 
-A stranded PR needs a rebase, not a rebuild. **Ask first**, then send a worker into the **existing**
-worktree — never create a second one for the same ticket:
+A stranded PR needs a rebase, not a rebuild. **Ask first** (or proceed directly under `--yes`, once
+per PR — see Unattended mode), then send a worker into the **existing** worktree — never create a
+second one for the same ticket:
 
 ```bash
 ORCA terminal create --worktree issue:<n> --title fixup-<n> --command 'claude' --json
@@ -314,7 +315,7 @@ Default to **sonnet** and justify each **opus** in one clause. A whole frontier 
 the routing wasn't done. Tickets differ, so the tier is per ticket, never per wave.
 
 Ask before dispatching. Claiming writes to the tracker and spawning workers spends tokens; neither is
-something to infer. On `--dry-run`, stop here.
+something to infer. On `--dry-run`, stop here. **With `--yes`, skip the ask** — see Unattended mode.
 
 ## Step 4 — Claim, then dispatch
 
@@ -434,6 +435,76 @@ Its brief gets everything it needs to run commands without judgment calls:
   **stop and report rather than improvise** if any command is rejected — a rejected flag means this
   binary's surface differs from Step 0's guide, which is your call to make, not its.
 
+## Unattended mode — `--yes`
+
+For `/loop /frontier <parent> --yes --max-workers N`. Presumes approval for the dispatch decision so
+a tick can complete without a human, and **nothing else**.
+
+**`--max-workers` is required with `--yes`.** Refuse to run without it. Interactive approval was the
+only thing bounding fan-out; remove it and the ceiling has to be stated out loud, because that number
+governs an overnight run nobody is watching.
+
+### What `--yes` approves
+
+Only what is mechanical, reversible, or already gated by a hard rule:
+
+- **Claiming** a candidate — reversible with one `gh issue edit --remove-assignee`.
+- **Dispatching** a candidate — it already cleared scope, label, blockers, assignee, acceptance
+  criteria, and the ceiling. The guards are the approval.
+- **Reaping** a worktree — closed + merged + in scope is provable, not a judgment call.
+
+### What `--yes` never approves
+
+These stay blocked no matter what flag was passed:
+
+- **An issue with no `## Acceptance criteria`.** A hard refusal, not a prompt — so `--yes` cannot
+  turn into "dispatch the spec".
+- **The scope parent.** Same.
+- **Unassigning a stale claim.** A dead worker and a live one on another machine are identical from
+  here; guessing wrong kills work in progress.
+- **`worktree rm --force`**, or reaping anything with uncommitted changes.
+- **A second fixup for the same PR** — see below.
+
+### Self-healing a stranded PR, exactly once
+
+With `--yes`, Step 1b's fixup re-dispatch happens without asking — but **once per PR, ever**. Mark
+the attempt on the PR itself when dispatching:
+
+```bash
+gh pr comment <pr> --body "🤖 /frontier dispatched a rebase-only worker for this conflict."
+```
+
+Next tick, a PR that is *still* `CONFLICTING` **and already carries that marker** does not get
+another worker. Report it as **needs a human** and move on. A rebase that failed once will fail the
+same way again; looping it burns tokens and buries the real problem under identical attempts.
+
+The marker lives on GitHub deliberately — same reason as everything else here. It survives the loop
+dying, and you can read it without asking the loop what it did.
+
+### Terminal conditions — when a tick ends the loop
+
+Three outcomes, distinguishable every tick without any stored state:
+
+| Condition | Meaning | Tick result |
+| --- | --- | --- |
+| Every child **closed** | the feature is done | report the parent is ready to close, **stop the loop** |
+| Frontier empty, ≥1 in-flight worker **live** | workers still building | **noop**, wake later |
+| Frontier empty, **every** in-flight ticket possibly-stale | nothing can progress | report **stalled**, **stop the loop** |
+
+The third row is the one that matters. Every open child either blocked by a dead worker's ticket or
+assigned to one means the loop can never advance on its own — no counter needed, it's decidable from
+the current state. Stopping there and naming the stale claims is strictly better than noop-ing until
+someone notices.
+
+**Do not close the parent automatically.** Report it as ready. `/to-tickets` deliberately never
+touches the parent, and closing a feature issue is a call worth a human glance at what shipped.
+
+### Reporting into a loop
+
+Each tick's output is read as one line in a long transcript. Lead with what changed —
+`dispatched #237 (sonnet), reaped #236, 1 stranded` — then details. When nothing changed, say so in
+one line and mark the tick a noop so quiet holds collapse instead of scrolling.
+
 ## Step 5 — Report, then stop
 
 Print the dispatcher's table: ticket → tier → path (A/B) → worktree id → agent handle → claimed ✓.
@@ -475,6 +546,11 @@ If the user wants supervision, that's a different flow (`/implement-orca`).
   which is the one thing you can't judge from here.
 - **A fixup worker rebases and nothing else.** Improving code during a rebase turns an approved
   change into an unreviewed one.
+- **`--yes` requires `--max-workers`.** Removing the human ceiling means stating the machine one.
+- **`--yes` never overrides a hard refusal.** No acceptance criteria, the parent, a stale claim, or
+  `--force` stay blocked with the flag set.
+- **One fixup per PR, ever.** Marked on the PR itself; a second identical rebase attempt is a loop,
+  not a repair.
 - **Delegate the commands, own the briefs.** You decide; a cheaper agent types.
 - **Never dispatch an assigned ticket** without the user explicitly overriding — someone else holds
   it.
@@ -500,6 +576,10 @@ If the user wants supervision, that's a different flow (`/implement-orca`).
   without it.
 - A worker never responds to its brief → on Path B you probably skipped `terminal wait --for
   tui-idle` and the prompt was swallowed. Re-check the handle before re-sending; never dual-send.
+- **A loop that noops forever with open tickets** → every in-flight ticket is stale. That's the
+  stalled terminal condition; stop and name them instead of waking again.
+- **The same PR getting a fixup worker every tick** → the marker comment isn't being written or
+  isn't being checked. One per PR, ever.
 - **Worktrees piling up across runs** → the sweep isn't running, or it's failing the merged check
   silently. `/cleanup` will never remove them; that's by design.
 - **A PR sat CONFLICTING for hours** → its worker exited. Nothing self-heals in a handoff flow;

@@ -152,6 +152,16 @@ orca repo add --path /abs/repo --json
   `ready-for-agent` and `/to-tickets` labels every *ticket* the same, so the label alone can't tell a
   whole feature from one slice. Scoping plus a hard "no acceptance criteria → not a ticket" guard is
   what stops a spec being dispatched as if it were a ticket.
+- **Unattended looping is `/loop /frontier <parent> --yes --max-workers N`.** `--yes` presumes
+  approval only for what's mechanical or already gated — claiming, dispatching a candidate that
+  cleared every guard, reaping a provably-merged worktree. It never overrides a hard refusal: an
+  issue without acceptance criteria, the scope parent, unassigning a stale claim, and `--force` stay
+  blocked with the flag set. It self-heals a stranded PR **once per PR**, marked by a comment on the
+  PR itself so the limit survives the loop dying.
+- **A tick can end the loop.** All children closed → report the parent ready to close and stop.
+  Frontier empty with live workers → noop. Frontier empty and *every* in-flight ticket stale →
+  stalled, stop and name them. That third case is decidable from current state, so no counter is
+  needed and a dead loop never noops indefinitely.
 - **Nothing reaps worktrees except `/frontier`.** `/cleanup` refuses to remove its own worktree
   inside an Orca terminal — correct, since a session can't delete the directory it's running in —
   and reports it "left for Orca to manage". Orca is a worktree manager, not a reaper, so that
