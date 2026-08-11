@@ -15,8 +15,8 @@ Nothing upstream is forked. Matt's skills publish to whatever
                                                                      │
                                              ┌───────────────────────┘
                                              ▼
-                                        /frontier
-                          query takeable ─ claim by assignee ─ dispatch
+                                    /frontier <parent>
+                    scoped to one parent ─ claim by assignee ─ dispatch
                                              │
              ┌───────────────────────────────┼──────────────────────────┐
              ▼                               ▼                          ▼
@@ -148,5 +148,13 @@ orca repo add --path /abs/repo --json
 - **`/frontier` resolves the agent-ready label from `docs/agents/triage-labels.md`**, falling back to
   the literal `ready-for-agent` when that file is absent. If you remap the triage vocabulary, the
   frontier follows — but note setup only writes that file when `triage` is installed.
+- **`/frontier` is scoped to a parent issue, never the repo.** `/to-spec` labels the *spec*
+  `ready-for-agent` and `/to-tickets` labels every *ticket* the same, so the label alone can't tell a
+  whole feature from one slice. Scoping plus a hard "no acceptance criteria → not a ticket" guard is
+  what stops a spec being dispatched as if it were a ticket.
+- **Per-ticket model tiers need the four-step dispatch.** `orca worktree create` has no `--model`;
+  only `orchestration worker-start` does, and that drags in coordinator lifecycle plus loses
+  `--issue`. So `/frontier` pins a tier with `terminal create --command 'claude --model <tier>'`
+  instead, staying a handoff.
 - **A cleared `/wayfinder` map hands off to `/to-spec`, not straight to `/frontier`.** Skipping the
   collapse throws away the linked decision detail the map spent its whole run accumulating.

@@ -59,8 +59,10 @@ Build it SERIALLY, yourself. Do NOT call /implement or /implement-orca: a single
 into a dependency chain, which collapses to width 1, which their gate refuses to orchestrate. The
 parallelism in this flow is across tickets, and it already happened — you are one of those workers.
 
-Use /tdd at the seams the spec named — failing test first, then the minimal code to pass, then
-refactor. Run typechecking and the relevant test files as you go, and the full suite once at the end.
+Work test-first at the seams the spec named: write the failing test (red), then the minimal code to
+pass it (green), then refactor. Test the seam's external behaviour, not its internals — a test that
+asserts on implementation detail breaks on every refactor and protects nothing. Run typechecking and
+the relevant test files as you go, and the full suite once at the end.
 
 Stay inside this ticket. If you find work that belongs to another ticket, note it in your report and
 leave it alone — don't fix it here.
