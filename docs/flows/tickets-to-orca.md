@@ -152,6 +152,13 @@ orca repo add --path /abs/repo --json
   `ready-for-agent` and `/to-tickets` labels every *ticket* the same, so the label alone can't tell a
   whole feature from one slice. Scoping plus a hard "no acceptance criteria → not a ticket" guard is
   what stops a spec being dispatched as if it were a ticket.
+- **`--max-workers N` is a ceiling on concurrent workers, not on one run's dispatch.** It subtracts
+  what's already in flight, so repeated runs can't accumulate past `N`. When the frontier exceeds the
+  ceiling, tickets are ranked by `blocking` count descending — finishing the ticket that gates three
+  others widens the frontier; finishing a leaf doesn't. Deferred tickets are always named, never
+  dropped. An assigned ticket whose Orca worktree is gone holds a slot forever and is reported as
+  "possibly stale" — `/frontier` never unassigns it, since a dead worker and a live one on another
+  machine are indistinguishable from here.
 - **Per-ticket model tiers need the four-step dispatch.** `orca worktree create` has no `--model`;
   only `orchestration worker-start` does, and that drags in coordinator lifecycle plus loses
   `--issue`. So `/frontier` pins a tier with `terminal create --command 'claude --model <tier>'`

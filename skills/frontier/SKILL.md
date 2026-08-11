@@ -8,7 +8,7 @@ description: >
   after /to-tickets has published a dependency-linked ticket set to GitHub Issues.
 trigger: /frontier
 user-invocable: true
-argument-hint: "<parent issue number, e.g. 234> [--dry-run]"
+argument-hint: "<parent issue number, e.g. 234> [--max-workers N] [--dry-run]"
 allowed-tools: ["Read", "Bash", "Glob", "Grep", "AskUserQuestion", "TaskCreate", "TaskUpdate", "Skill", "Agent"]
 ---
 
@@ -175,12 +175,54 @@ the blocked, assignee, **and acceptance-criteria** checks, and refuse any that f
 overrides in the same breath. The acceptance-criteria check is not overridable by silence: a spec
 dispatched as a ticket produces one worker attempting a whole feature.
 
-## Step 3 — Present, and get approval
+## Step 3 — Rank, cap, present, get approval
 
-Print one line per candidate: number, title, and the one-line "What it delivers". Then list what was
-**excluded and why** — blocked (by which open issues), already assigned (to whom), or not
-`ready-for-agent`. The exclusions matter more than the inclusions; a ticket silently missing from the
-frontier looks identical to a ticket that doesn't exist.
+### Rank by what each ticket unblocks
+
+Order candidates by **`blocking` count descending**, tie-break on issue number ascending. The same
+call that gave you `blocked_by` already carries it:
+
+```json
+#237 → {"blocked_by": 1, "blocking": 3}   ← finishing this widens the frontier to 3
+#238 → {"blocked_by": 1, "blocking": 0}
+#239 → {"blocked_by": 1, "blocking": 0}
+```
+
+This ordering only *matters* under a cap, but compute it always — it's the right order to present in
+regardless, and it tells the user which ticket is on the critical path.
+
+### Apply `--max-workers N`
+
+`N` is a ceiling on **concurrent workers**, not on this run's dispatch. Count what's already running
+first:
+
+```
+in_flight = children that are open AND assigned
+available = max(0, N - in_flight)
+dispatch   = first `available` candidates in ranked order
+```
+
+Counting only this run's dispatch is the bug to avoid: four ticks at `--max-workers 3` would each
+add three, ending at twelve. The cap is a level, not a rate.
+
+If `available` is `0`, say so and stop — the ceiling is full, nothing is wrong. If candidates were
+truncated, **name them and say they're deferred to the next run**, never drop them silently.
+
+**Flag stale claims, don't consume the ceiling with them.** An assigned ticket whose Orca worktree
+is gone (`ORCA worktree list --json`, or the `issue:<n>` selector resolving to nothing) is a worker
+that died — its claim will never clear on its own. Count it in `in_flight` (conservative: assume it
+might still be live), but **report it separately as "possibly stale"** so the user can unassign it.
+Never unassign one yourself; you can't distinguish a dead worker from a live one on another machine.
+
+Without `--max-workers`, dispatch every candidate — interactive approval is its own ceiling.
+
+### Present
+
+Print one line per candidate: number, title, `blocking` count, and the one-line "What it delivers".
+Then list what was **excluded and why** — blocked (by which open issues), already assigned (to whom),
+not agent-ready, no acceptance criteria, or **deferred by the cap**. The exclusions matter more than
+the inclusions; a ticket silently missing from the frontier looks identical to a ticket that doesn't
+exist.
 
 **Route a model tier per ticket**, and show it in the same table. Cheapest tier whose *intelligence
 and taste* both clear the bar — the same rubric `/taskplan` uses:
@@ -320,10 +362,15 @@ Its brief gets everything it needs to run commands without judgment calls:
 ## Step 5 — Report, then stop
 
 Print the dispatcher's table: ticket → tier → path (A/B) → worktree id → agent handle → claimed ✓.
-Repeat the exclusion list. Then tell the user plainly:
+Repeat the exclusion list. Under a cap, also print the ceiling state — `in_flight / N`, the deferred
+tickets by number, and any "possibly stale" claims — so the next run's starting position is visible
+without re-deriving it. Then tell the user plainly:
 
 > Workers are running independently. Each will open its own PR via `/cleanup`. Re-run
 > `/frontier <parent>` once those merge to pick up the newly-unblocked tickets.
+
+If the cap deferred anything, say which and why in the same breath — `#241, #242 deferred (ceiling
+3/3)` — so a short frontier never reads as a finished one.
 
 When the scope's children are **all closed**, say so and note the parent is ready to close —
 `/to-tickets` deliberately never touches it (*"Do NOT close or modify any parent issue"*), so nothing
@@ -343,6 +390,10 @@ If the user wants supervision, that's a different flow (`/implement-orca`).
 - **Never dispatch a blocked ticket.** The `blocked_by` count is the gate, not your judgment about
   whether the blocker "really" matters.
 - **Route a tier per ticket, and say why for each opus.** Everything-on-opus is unrouted.
+- **`--max-workers` is a level, not a rate.** Subtract what's already in flight, or ticks accumulate.
+- **Never silently truncate.** A capped ticket is deferred and named, not dropped.
+- **Never unassign a stale claim yourself.** Report it; a dead worker and a live one on another
+  machine look identical from here.
 - **Delegate the commands, own the briefs.** You decide; a cheaper agent types.
 - **Never dispatch an assigned ticket** without the user explicitly overriding — someone else holds
   it.
@@ -368,3 +419,8 @@ If the user wants supervision, that's a different flow (`/implement-orca`).
   without it.
 - A worker never responds to its brief → on Path B you probably skipped `terminal wait --for
   tui-idle` and the prompt was swallowed. Re-check the handle before re-sending; never dual-send.
+- **The cap keeps reporting 0 available but no worker is doing anything** → stale claims are holding
+  the ceiling. Check the "possibly stale" list; an assigned ticket with no live worktree never clears
+  itself.
+- **You dispatched the lowest issue number instead of the highest `blocking`** → under a cap that
+  leaves the frontier as narrow as it was. Re-read the ranking rule.
