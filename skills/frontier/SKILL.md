@@ -81,12 +81,21 @@ is rejected by this binary.
 
 ## Step 2 — Compute the frontier
 
-**Takeable** = open **and** labelled `ready-for-agent` **and** zero open blockers **and** unassigned.
+**Takeable** = open **and** carrying the agent-ready label **and** zero open blockers **and**
+unassigned.
 
-Start with the label + assignee filter:
+**Resolve the label first — don't assume `ready-for-agent`.** `/setup-matt-pocock-skills` lets a repo
+map the five canonical triage roles onto its own vocabulary. Read
+`docs/agents/triage-labels.md` and take the right-hand column for the `ready-for-agent` row; a repo
+that kept the defaults has an identity table, and a repo that didn't uses something like
+`bug:ready`. If the file is absent (setup skipped Section B because `triage` isn't installed), fall
+back to the literal `ready-for-agent`. Name the label you resolved in your output — an empty frontier
+caused by a label mismatch is otherwise indistinguishable from "no work available".
+
+Then the label + assignee filter:
 
 ```bash
-gh issue list --state open --label ready-for-agent \
+gh issue list --state open --label "<resolved-label>" \
   --json number,title,body,labels,assignees \
   --jq '[.[] | select(.assignees | length == 0)]'
 ```
@@ -155,7 +164,10 @@ ORCA worktree create \
 - Read the agent handle from `result.agentTerminalHandle`; older runtimes return only
   `result.startupTerminal.handle`. If a handle later reports `terminal_handle_stale`, re-list with
   `ORCA terminal list --worktree <selector> --json` — never dual-send to old and new handles.
-- Build each worker's prompt from [references/worker-brief.md](references/worker-brief.md).
+- Build each worker's prompt from [references/worker-brief.md](references/worker-brief.md). **Fetch
+  the issue with its comments** (`gh issue view <n> --comments`), not just the body: a triaged issue
+  carries its specification in an **agent brief comment**, and the body is only context. See the
+  brief template for which to send.
 
 **Dispatch all approved tickets in one pass**, then stop issuing commands — they run concurrently
 and independently.

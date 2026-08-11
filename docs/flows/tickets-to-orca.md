@@ -137,6 +137,16 @@ orca repo add --path /abs/repo --json
   **asks** rather than guessing. A ticket left open after its work merged stalls everything
   downstream of it.
 - **`/triage` is for issues you didn't create.** Tickets from `/to-tickets` are already
-  `ready-for-agent` by construction; running triage over them is wasted work.
+  `ready-for-agent` by construction; running triage over them is wasted work. Install it when other
+  people file issues in the repo — without it, incoming reports never reach the agent-ready label and
+  `/frontier` will never see them. On a solo repo where every ticket comes from your own
+  `/to-spec` → `/to-tickets`, skip it.
+- **A triaged ticket's contract is a comment, not its body.** When triage moves an issue to
+  agent-ready it posts an **agent brief**; the body stays a raw user report. `/frontier` fetches
+  `gh issue view <n> --comments` and sends the brief, because sending the body would hand the worker
+  the symptom instead of the work.
+- **`/frontier` resolves the agent-ready label from `docs/agents/triage-labels.md`**, falling back to
+  the literal `ready-for-agent` when that file is absent. If you remap the triage vocabulary, the
+  frontier follows — but note setup only writes that file when `triage` is installed.
 - **A cleared `/wayfinder` map hands off to `/to-spec`, not straight to `/frontier`.** Skipping the
   collapse throws away the linked decision detail the map spent its whole run accumulating.
