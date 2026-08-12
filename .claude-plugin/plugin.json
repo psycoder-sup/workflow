@@ -1,7 +1,7 @@
 {
   "name": "workflow",
-  "version": "0.10.0",
-  "description": "Spec-driven delivery pipeline: /spec (PRD) -> /taskplan (partitioned plan) -> /implement (parallel orchestrated build; /implement-orca for Orca-dispatched workers) -> /cleanup (PR, CI, merge, teardown). Plus /frontier for ticket-level parallelism over GitHub Issues (one Orca worktree per ticket), and /project-kit project scaffolding.",
+  "version": "0.11.0",
+  "description": "Spec-driven delivery pipeline: /spec (PRD) -> /taskplan (partitioned plan) -> /implement (parallel orchestrated build; /implement-orca for Orca-dispatched workers) -> /cleanup (PR, CI, merge, teardown). Plus ticket-level execution over GitHub Issues: /frontier fans a wide graph out to parallel Orca worktrees (one PR per ticket), /caravan walks a mostly-linear graph on one integration branch (one PR total). And /project-kit project scaffolding.",
   "author": {
     "name": "SangUk Park"
   },
