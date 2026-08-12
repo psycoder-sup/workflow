@@ -31,6 +31,9 @@ graph is width 1–2, its per-ticket ceremony — a worktree, a PR, a merge, and
 per ticket — is pure cost, and a ticket's dependencies clear only at PR-merge speed. Caravan clears
 them at commit speed: ticket #4 starts the moment #3's slice lands on the integration branch.
 
+Workers as visible Orca terminal sessions instead of in-process subagents → **`/caravan-orca`**
+(same doctrine, Orca transport).
+
 ## Why the `W == 1` gate does not stop this skill
 
 `/implement` hard-STOPs on serial work (`W == 1`), and caravan is serial by design — so state the
