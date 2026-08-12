@@ -1,7 +1,8 @@
 ---
 name: cleanup
 description: >
-  Ship completed work off a worktree branch — an /implement milestone, or a single /frontier ticket:
+  Ship completed work off a worktree branch — an /implement milestone, a single /frontier ticket,
+  or a /caravan integration branch (whose already-open PR is adopted, never recreated):
   open a PR for the branch (auto-closing the GitHub issues it resolves), poll CI until conclusive
   (never cancel — self-hosted runners can be slow), auto-merge when every check is green and the PR
   is MERGEABLE/CLEAN, then close the emptied GitHub milestone and clean up the worktree + branches
@@ -68,6 +69,11 @@ in a cheap child terminal.
   **This rebase is now the *single* reconciliation point for `status.json` too** (see the fold-in
   bullet below) — there is no later direct push to `main` to race.
 - Push the code: `git push -u origin "$branch"` (add `--force-with-lease` if you rebased).
+- **Adopt an existing PR if one is already open for this branch** —
+  `gh pr list --head "$branch" --state open --json number,url`. A hit means an upstream flow (e.g.
+  `/caravan`, which composes a multi-`Closes` body this skill can't reconstruct) already opened it:
+  **skip creation, keep its body untouched** — do not regenerate the `Closes #<n>` lines — capture
+  its number + URL, and jump to the status-bump bullet below (then step 2). No hit → create it:
 - `gh pr create --base main --head "$branch" --title "…" --body-file …` — body = what shipped + how
   it was verified; end with the repo's PR footer convention. **Capture the PR number AND URL.**
 - **Auto-close the issues this ship resolves.** In the PR body, add a `Closes #<n>` line for every

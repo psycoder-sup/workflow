@@ -35,11 +35,12 @@ as native GitHub `blocked_by` edges. Two tickets in two worktrees are isolated a
 which is strictly stronger than file-boundary discipline — they may both touch the router, and the
 conflict surfaces at merge, where git is the right tool.
 
-**Route work here vs `/implement`:**
+**Route work here vs `/caravan` vs `/implement`:**
 
 | Shape | Route |
 | --- | --- |
-| Deep + coupled — one feature through every layer | `/to-tickets` → **`/frontier`** → N worktrees, one agent each |
+| Deep + coupled, **wide** graph — 3+ tickets independently unblocked, per-ticket review wanted | `/to-tickets` → **`/frontier`** → N worktrees, one agent each |
+| Deep + coupled, **mostly-linear** graph — width 1–2, or tickets too small for solo PRs | `/to-tickets` → `/caravan` → one integration branch, one PR |
 | Broad + shallow — same change × many files (12 endpoints, 30 components) | skip `/to-tickets` → `/taskplan` → `/implement` waves |
 
 ## This is a full handoff, not supervised orchestration
@@ -565,7 +566,9 @@ If the user wants supervision, that's a different flow (`/implement-orca`).
 - `ready-for-agent` returns zero issues but the repo clearly has tickets → the label probably doesn't
   exist. Check `gh label list`; don't broaden the query to compensate.
 - Every candidate is blocked → the chain is linear. That's fine and expected for a tightly-coupled
-  feature; dispatch the one head ticket rather than forcing width.
+  feature; dispatch the one head ticket rather than forcing width. But if the *whole graph* is like
+  this, `/caravan` is the better vehicle — it walks a linear chain on one integration branch at
+  commit speed instead of paying a worktree + PR + re-run per ticket.
 - A ticket's body has no acceptance criteria → it didn't come from `/to-tickets`, or triage never
   finished it. Send it back rather than handing a worker a vague brief.
 - **The frontier contains the parent you scoped to** → the acceptance-criteria guard didn't run.
