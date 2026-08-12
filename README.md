@@ -34,6 +34,7 @@ Plus `/project-kit` — scaffolds `docs/pm/` project management (status, decisio
 | `/implement-orca` | build | Same orchestration doctrine, but workers are Orca-dispatched `claude` CLI terminals (via the official `orchestration` skill): visible panes + runtime task/dispatch provenance. |
 | `/frontier` | build | Ticket-level parallelism: query GitHub for takeable tickets (open, `ready-for-agent`, unblocked, unassigned), claim by assignee, dispatch one Orca worktree + `claude` worker per ticket. Full handoff — no coordinator. |
 | `/caravan` | build | Ticket-level serial walk: work a parent's mostly-linear ticket graph on one integration branch, one fresh `code-implementer` per ticket, each verified slice landed as a `Ticket: #<n>` commit — then one PR closing every child. |
+| `/caravan-orca` | build | Same campaign doctrine, but each ticket's worker is a `claude` CLI session in its own Orca terminal via supervised `orchestration` (task-create → dispatch --inject → worker_done): visible panes + task/dispatch provenance, one fresh terminal per ticket. |
 | `/cleanup` | ship | Open the PR, poll CI to conclusive (`pollci.py`), auto-merge on green, tear down the worktree + branches. |
 | `/project-kit` | setup | Scaffold `docs/pm/` (status.json, decisions, schemas, dashboard) and the CLAUDE.md block. |
 
