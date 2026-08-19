@@ -1,135 +1,170 @@
 ---
 name: spec
 description: >
-  Turn a rough feature idea into a written PRD before any code. Interview one question at a time
-  (only for gaps inference can't fill), surface assumptions, write docs/spec/<slug>.md covering
-  objective, structure, testing, and boundaries, then delegate a fresh-eyes review (opus) that
-  revises the doc in place. The define stage that feeds /taskplan then /implement.
-  Use at the START of a non-trivial feature, when the "what/why" isn't yet pinned down.
+  Turn a rough feature idea into a published parent spec issue on GitHub. Grills the user in
+  frontier rounds (via the plugin's grilling + domain-modeling skills), writing glossary terms to
+  CONTEXT.md and ADRs to docs/adr/ as decisions crystallize; synthesizes the spec into the parent
+  issue body (Problem Statement / Solution / User Stories / Implementation Decisions / Testing
+  Decisions / Out of Scope); splits into sibling parent issues when the work exceeds one PR; runs a
+  fresh-eyes review before publishing. The issue body IS the spec. The define stage that feeds
+  /taskplan then /implement. Use at the START of a non-trivial feature.
 trigger: /spec
 user-invocable: true
 argument-hint: "<feature description | rough idea | path to notes>"
-allowed-tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "AskUserQuestion", "WebFetch", "Agent"]
+allowed-tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "AskUserQuestion", "WebFetch", "Agent", "Skill"]
 ---
 
 # /spec
 
-Write the **spec before the code**. This is the *define* stage of the spec → taskplan → implement
-pipeline: it produces a PRD (`docs/spec/<slug>.md`) that `/taskplan` decomposes into tasks and
-`/implement` builds. Benchmarks agent-skills `spec-driven-development` + `interview-me`.
-
-A spec's job is to make the work *unambiguous and verifiable* — not to design the implementation.
-Capture what to build, why, and how you'll know it's done; leave the how-to-build to `/taskplan`.
+Write the **spec before the code** — as a **parent issue on GitHub**, not a file. This is the
+*define* stage of the pipeline: `/spec` publishes the parent, `/taskplan` hangs sub-issues off it,
+`/implement` builds the graph. The parent issue body is the single source of truth for
+work-in-flight; the durable outputs of the thinking — glossary terms and architectural decisions —
+land in git (`CONTEXT.md`, `docs/adr/`) as the session runs.
 
 ## When to use
 
 - **Use** at the start of any non-trivial feature where the "what/why" isn't fully pinned.
-- **Skip** for a one-line fix, a mechanical change, or work whose spec already exists — go straight
-  to `/taskplan` or a single implementer.
+- **Skip** for a one-line fix or a mechanical change — file a ticket directly (or `/triage` it) and
+  go to `/implement <n>`.
+
+## Preconditions
+
+`/project-kit` has run: the `spec` label and triage labels exist, `docs/agents/issue-tracker.md`
+names the tracker. If the `spec` label is missing, stop and point at `/project-kit`.
 
 ## Process
 
 ### 1. Orient — infer before you ask
-Read what the repo already tells you so the interview is short and you don't re-ask known facts:
-- The repo's design docs — whatever lives under `docs/` (project brief, data model, protocol/API
-  specs, UI docs) plus the README and CLAUDE.md.
-- Current state, if the repo uses project-kit: `docs/pm/status.json` (now/next), relevant
-  `docs/pm/decisions/*.json` (locked calls).
-- If graphify-out/ exists, `graphify query "<feature area>"` to locate the touched code.
-- For any external API/library the feature leans on, fetch official docs (context7/WebFetch) rather
-  than guessing its surface.
 
-### 2. Surface assumptions
-Before interviewing, **state your assumptions explicitly** — what you're taking as given from the
-docs and the request. This turns silent guesses into things the user can correct cheaply.
+Read what the repo already tells you so the grilling is short and never re-asks known facts:
 
-### 3. Interview for gaps only — one question at a time
-Use **AskUserQuestion** to fill *only* what inference couldn't resolve. Ask the single highest-value
-question, take the answer, then decide the next — don't batch a wall of questions. Stop when you're
-~confident you could hand the spec to an implementer without them having to guess intent. Typical
-gaps: the core user outcome, scope edges (what's explicitly out), UX/style constraints, how success
-is measured.
+- `CONTEXT.md` (or `CONTEXT-MAP.md`) — the domain glossary; use its vocabulary throughout.
+- `docs/adr/*` in the touched area — locked decisions. A request that contradicts one must be
+  surfaced in the grilling, not papered over.
+- README, CLAUDE.md, and the code the feature touches.
+- Open `spec`-labeled issues — the new spec may overlap or depend on one.
+- For any external API/library the feature leans on, fetch official docs rather than guessing.
 
-Manage confusion actively: if the request contradicts a locked decision or an existing doc, **name
-the conflict and resolve it** before writing — don't paper over it.
+### 2. Grill — frontier rounds, docs as you go
 
-### 4. Write the PRD → `docs/spec/<slug>.md`
-Derive `<slug>` as kebab-case from the feature (e.g. `dates-today-view`). Write these sections:
+Invoke the plugin's **`grilling`** skill and run it together with **`domain-modeling`**: map the
+feature as a design tree, ask each round's full frontier (numbered questions, each with your
+recommended answer), dispatch sub-agents for facts, and put every *decision* to the user.
+
+As decisions crystallize, `domain-modeling` discipline applies inline:
+
+- A resolved term → `CONTEXT.md`, immediately, in its format.
+- A decision that is hard to reverse + surprising without context + a real trade-off → offer an ADR
+  (`docs/adr/NNNN-<slug>.md`, minimal format: title + 1–3 sentences). Sparingly — most decisions
+  just live in the spec.
+
+Also settle the **test seams** during grilling: prefer existing seams, the highest and fewest
+possible (ideally one). The agreed seams go into Testing Decisions — `/taskplan`'s `tdd` method and
+the workers depend on them being named.
+
+The grilling ends when the frontier is empty and the user confirms shared understanding.
+
+### 3. Synthesize the spec
+
+Draft the parent issue body (write it to a scratch file for the review step):
 
 ```markdown
-# <Feature title>
+## Problem Statement
 
-> Spec — feeds `/taskplan docs/spec/<slug>.md`. Status: draft | ready.
+The problem the user is facing, from the user's perspective.
 
-## Objective
-The single outcome this delivers, in 1–2 sentences. What the user can do after that they couldn't before.
+## Solution
 
-## Why (context)
-The problem/need. What prompted it. Link the driving doc/decision/status item.
+The solution, from the user's perspective.
 
-## User stories / scenarios
-Concrete "As a … I can … so that …" or walkthrough scenarios. The behavior, not the mechanism.
+## User Stories
 
-## Structure (what changes, where)
-The surfaces touched — modules/files/screens/endpoints — at a *pointing* level, not a design.
-Enough for /taskplan to draw a file-ownership map.
+A LONG, numbered list: "As a/an <actor>, I want <feature>, so that <benefit>." Extensive —
+cover all aspects of the feature.
 
-## Style / UX constraints
-Design-system, naming, accessibility, platform (Mac/iOS), copy constraints that bound the build.
+## Implementation Decisions
 
-## Testing strategy
-How correctness is proven: the key cases, the test levels (unit/integration/UI), what "done" looks like.
+The decisions the grilling produced: modules built/modified and their interfaces, architectural
+decisions (link any ADRs written), schema changes, API contracts, UX/style constraints, specific
+interactions. NO file paths or code snippets — they go stale fast. Exception: a prototype-derived
+snippet that encodes a decision more precisely than prose (state machine, schema, type shape),
+trimmed to the decision-rich parts.
 
-## Boundaries / non-goals
-What is explicitly OUT of scope. The single most important section for preventing scope creep.
+## Testing Decisions
 
-## Open questions
-Anything still unresolved. Empty when the spec is `ready`.
+What makes a good test here (external behaviour, not implementation details), the agreed seams,
+which modules get tested, prior art in the codebase.
+
+## Out of Scope
+
+What is explicitly NOT in this spec — the most important section for preventing scope creep.
+
+## Further Notes
+
+Anything else worth carrying (open follow-ups, links to the grilling's key facts).
 ```
 
-Keep it falsifiable: concrete cases over adjectives. If a section is genuinely N/A, say so — don't pad.
+### 4. Split check — one parent per PR
+
+**The invariant downstream is 1 parent = 1 worktree = 1 PR.** Before review, test the draft:
+
+- Does the work contain **≥ 2 independently-shippable feature boundaries** (each demoable without
+  the other)?
+- Or would it project to **more than ~8–10 sub-issues** (beyond that, a single PR stops being
+  reviewable)?
+
+If either trips, **propose a split into flat sibling parent issues** — one mini-round: the cut
+points, what each part ships, and the ordering. Cut points are product decisions — **the user
+approves every split.** Siblings that must ship in order get native `blocked-by` edges between the
+parents; the narrative link is a body line ("Part 2 of 3 — follows #41"). No epic grandparent — the
+two-level shape (parent → sub-issues) is what every skill consumes.
 
 ### 5. Fresh-eyes review — delegated, revises in place
-Spawn ONE `general-purpose` subagent with `model: "opus"` to review the draft with fresh eyes. Do
-NOT have it return findings for you to apply — that round-trips the whole review through this
-session's context and turns you into the editor. Instead, its prompt:
 
-- Read `docs/spec/<slug>.md` plus the same repo context step 1 named (docs/, status.json, relevant
-  decisions).
-- Check: ambiguity (could an implementer guess wrong?), unfalsifiable requirements, missing
-  non-goals, contradictions with repo docs or locked decisions, untestable acceptance.
-- **Edit the spec file in place** to fix what is clearly wrong or missing.
-- Return ONLY two compact lists — no restatement of the document:
-  `CHANGELOG:` each edit as one line (what changed + why);
-  `OPEN ISSUES:` judgment calls it deliberately did not decide (conflicts with locked decisions,
-  scope questions only the user can settle).
+Spawn ONE `general-purpose` subagent with `model: "opus"` to review the draft body file(s) with
+fresh eyes. Its prompt: read the draft plus the same repo context step 1 named (`CONTEXT.md`,
+relevant ADRs); check for ambiguity an implementer could guess wrong, unfalsifiable requirements,
+missing out-of-scope, contradictions with ADRs or the glossary, untestable acceptance; **edit the
+file in place**; return only `CHANGELOG:` (one line per edit) and `OPEN ISSUES:` (judgment calls
+only the user can settle).
 
-Then **adjudicate, don't re-review**: skim the changelog against the file, revert any change you
-reject (Edit is fine — the spec is an orchestration artifact, not source code), and resolve OPEN
-ISSUES with the user via AskUserQuestion. The user's manual read of the finished spec remains the
-gate for `draft → ready` — this step feeds that gate; it does not replace it.
+Adjudicate, don't re-review: skim the changelog, revert what you reject, resolve OPEN ISSUES with
+the user.
 
-### 6. Report + hand off
-Print the path and the status (draft/ready), the review changelog summary, and the next step:
-**`/taskplan docs/spec/<slug>.md`**.
+### 6. Publish
 
-## Rules (inherited from the define discipline)
-- **Surface assumptions** before building on them.
-- **One question at a time**, gaps only — never re-ask what the repo answered.
+For each parent (in dependency order when split):
+
+```bash
+gh issue create --title "<feature title>" --body-file <draft> --label spec \
+  [--blocked-by <earlier-sibling>]
+```
+
+The `spec` label is the queryable identity ("all open specs"). Do NOT add the agent-ready label — a
+spec is not a ticket, and nothing may ever dispatch it as one.
+
+### 7. Report + hand off
+
+Print the issue URL(s), the ADRs/glossary terms written during the session, and the next step:
+**`/taskplan <parent>`** (per sibling, respecting their ordering).
+
+## Rules
+
+- **The issue body is the spec.** No `docs/spec/*.md` shadow copy — one source of truth.
+- **Facts are yours, decisions are the user's** — the grilling discipline, end to end.
+- **Durable thinking lands in git as it happens** — glossary and ADRs are written mid-session, not
+  batched.
 - **Scope discipline** — the spec captures the request, not adjacent features you'd like to add.
-- **Verifiable over vague** — every requirement must be checkable, or it isn't a requirement yet.
-- **Don't design here** — implementation choices belong to `/taskplan` and the implementers.
+- **Verifiable over vague** — every requirement checkable, or it isn't a requirement yet.
+- **Don't design the build here** — decomposition, boundaries, and tiers belong to `/taskplan`.
+- **Never label a spec agent-ready.**
 
 ## Red flags
-- You started writing code or file-level design → wrong stage; this is define-only.
-- The spec has no non-goals → scope is unbounded; add the boundaries.
-- Acceptance is "works well / looks good" → not falsifiable; make it concrete.
-- You batched ten questions at once → interview one at a time instead.
 
-## Verification
-- [ ] `docs/spec/<slug>.md` exists with every section (N/A explicitly where it applies).
-- [ ] Objective is one clear outcome; non-goals are stated.
-- [ ] Assumptions were surfaced; open questions are empty if status is `ready`.
-- [ ] Fresh-eyes review ran (delegated, opus); changelog adjudicated; OPEN ISSUES resolved or
-      carried into Open questions.
-- [ ] Reported the path and pointed at `/taskplan docs/spec/<slug>.md`.
+- You started writing code or file-level task lists → wrong stage; this is define-only.
+- The spec has no Out of Scope → scope is unbounded.
+- Acceptance is "works well / looks good" → not falsifiable.
+- You asked one question at a time → that's the old interview; grilling works in frontier rounds.
+- You're about to publish a spec that projects to 15 sub-issues → the split check didn't run.
+- You wrote an ADR for an easily-reversed choice → the three-part test failed; delete it.

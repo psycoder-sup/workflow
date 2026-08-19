@@ -1,180 +1,138 @@
 ---
 name: project-kit
 description: >
-  Bootstrap a project's agent-facing context system — structured JSON docs (live status +
-  decision records) rendered by a live HTML dashboard, plus the operating rules that keep
-  them current, wired into CLAUDE.md. Use when setting up context docs for a new or existing
-  project, "set up project docs", "scaffold status/ADRs", or first-time project setup.
-  Usage: /project-kit [--minimal | --full] [path]
+  Bootstrap a repo for the GitHub-issue pipeline: create the triage + spec labels as real GitHub
+  labels, write the tracker and label convention docs (docs/agents/), scaffold the domain-doc layout
+  (CONTEXT.md glossary + docs/adr/), and wire an Agent skills block into CLAUDE.md. Detects the old
+  project-kit JSON layout (docs/pm/) and offers a one-shot migration (decision records -> markdown
+  ADRs, the rest deleted). Run once per repo, before /spec, /taskplan, /implement, or /triage.
+  Usage: /project-kit [path]
 trigger: /project-kit
 user-invocable: true
-argument-hint: "[--minimal | --full] [path]"
+argument-hint: "[path]"
 allowed-tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "AskUserQuestion"]
 ---
 
 # /project-kit
 
-Bootstrap a project's **agent-facing context system** into any project, on the first
-session. It creates a small set of *living* docs as **structured JSON** (so they're machine-
-readable and never drift from a separate copy), ships a **live HTML dashboard** to read them
-at a glance, and wires the rules that keep them current into `CLAUDE.md`.
+Bootstrap a repo's **agent-facing conventions** for the pipeline: GitHub Issues are the only state
+store (specs = parent issues, tickets = sub-issues, dependencies = native blocked-by edges), the
+domain model lives in git (`CONTEXT.md` + `docs/adr/`), and CLAUDE.md points agents at both.
 
-The system is layered by how fast things change. The **data is JSON** (the source of truth that
-agents read and write); the **dashboard renders it** for humans:
-
-| Layer | File | Role |
+| Layer | Where | Role |
 |---|---|---|
-| Primer (auto-loaded) | `CLAUDE.md` | Always-on orientation + the self-maintaining rule. Points at `status.json`, doesn't duplicate it. |
-| Live state | `docs/pm/status.json` | Now / Next / Milestones / Blocked / Shipped. The "where are we" source of truth. |
-| Decisions | `docs/pm/decisions/NNNN-*.json` | One ADR (JSON) per direction change. Numbered, fixed once accepted. |
-| Field contracts | `docs/pm/schema/*.schema.json` | JSON Schema for each doc — the shape + per-field guidance. Consult before writing. |
-| Dashboard | `docs/pm/dashboard/` | Read-only viewer: `serve.py` (stdlib, live-reload) + `index.html`. `python3 docs/pm/dashboard/serve.py`. |
-| Thesis & spec *(opt-in)* | `docs/pm/project-summary.json`, `prd.json` | The "why" and the buildable "what". Only with `--full`. |
+| Labels | GitHub (real labels) | 5 triage states + 2 categories + `spec` |
+| Tracker conventions | `docs/agents/issue-tracker.md` | How skills read/write the tracker |
+| Label mapping | `docs/agents/triage-labels.md` | Canonical role → this repo's label strings |
+| Glossary | `CONTEXT.md` (repo root) | The ubiquitous language; maintained by `domain-modeling` |
+| Decisions | `docs/adr/NNNN-<slug>.md` | Minimal ADRs (title + 1–3 sentences); created lazily |
+| Primer | `CLAUDE.md` marked block | Points agents at all of the above + the pipeline |
 
-**Lean by default**: status + ADRs + schemas + dashboard + the `CLAUDE.md` rules. The thesis/spec layer is opt-in.
+Templates live next to this file under `templates/`. `{{TOKEN}}`s are substituted by you; there is
+no runtime templating.
 
-## Usage
+## Steps
 
-```
-/project-kit                 # infer from repo, interview only for gaps, scaffold lean
-/project-kit --minimal       # blank templates, no inference, no questions
-/project-kit --full          # also scaffold project-summary.json + prd.json
-/project-kit <path>          # target a different project root (default: current dir)
-/project-kit --help          # print this Usage block and stop
-```
+### 1. Detect & protect
 
-If invoked with `--help` / `-h` and no other arguments, print the `## Usage` block
-verbatim and stop. Do nothing else.
+Inspect the target root (argument path, default cwd). Never assume — look:
 
-## What you must do when invoked
+- **Git + GitHub**: a git repo with a GitHub remote (`git remote -v`)? `gh auth status` ok?
+  `gh --version` ≥ **2.94** (the sub-issue/dependency flags)? Any of these failing → report what's
+  missing and stop; this pipeline is GitHub-native.
+- **Existing labels**: `gh label list --json name`.
+- **Existing files**: `docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`, `CONTEXT.md`,
+  `docs/adr/`, a `<!-- project-kit:begin -->` block in `CLAUDE.md`.
+- **The old layout**: `docs/pm/` (status.json, decisions/*.json, dashboard, schemas), `docs/spec/`,
+  `docs/plan/` → queue the migration offer (step 5).
 
-The templates live next to this file under `templates/`. The JSON docs and the `CLAUDE.md` block
-carry `{{TOKEN}}` placeholders you substitute (mapping below) — **you** (the agent) do the
-substitution; the tokens are not a runtime feature. The dashboard (`dashboard/`) and schemas
-(`schema/`) are **static tooling copied verbatim**, with no tokens.
+Build a create-vs-skip list. **Never overwrite an existing file** — the only refresh-in-place
+targets are the marked `CLAUDE.md` block and label descriptions.
 
-### Step 0 — Parse arguments
-- `--minimal` → skip Steps 2 & 3 entirely (no inference, no questions); write templates with the
-  bracketed `[…]` placeholders left in place for the user to fill.
-- `--full` → in Step 4, also scaffold the optional thesis + spec docs (and their two schemas).
-- A bare non-flag argument → the **target project root**. Default: the current working directory.
-- Resolve the skill's own directory (where `templates/` sits) so you can read the templates —
-  e.g. `ls "$(dirname …)"`; if unsure, the templates are at `${CLAUDE_PLUGIN_ROOT}/skills/project-kit/templates/`.
+### 2. Confirm the little that needs confirming
 
-### Step 1 — Detect & protect (always)
-Inspect the target root. Use Glob/Read — do **not** assume.
-- Is there a `CLAUDE.md`? a `docs/pm/`? `docs/pm/status.json`? `docs/pm/decisions/`? `docs/pm/schema/`? `docs/pm/dashboard/`?
-- Build a **create vs. skip** list. **Never overwrite an existing file.** If a target file already
-  exists, leave it untouched and report it as *skipped* in Step 6.
-- The one exception is the marked block in `CLAUDE.md` (Step 5) and the generated decisions index
-  (Step 4a), which are refreshed in place.
+Infer the project name + one-liner (README, manifests) for the `CONTEXT.md` seed. Ask only what
+inference can't resolve — typically nothing, at most: confirm GitHub as the tracker if the remote is
+ambiguous, and whether external PRs are a request surface (default **no**; it only matters for
+`/triage`). Keep it to 0–2 questions.
 
-### Step 2 — Infer from the repo (skip if `--minimal`)
-Draft the project's identity from what's already there, so the scaffold ships filled, not empty:
-- **README** (`README*`), and any existing `CLAUDE.md` → project name, one-liner, purpose.
-- **Manifests** — `package.json`, `pyproject.toml`/`setup.py`, `Cargo.toml`, `go.mod`, `*.xcodeproj`/`project.yml`, `pom.xml`, etc. → name, language/stack, scripts.
-- **`git log --oneline -20`** and `git config user.name` → recent direction, current focus, owner.
-- **Top-level layout** → what kind of project this is and where the work is.
+### 3. Create the labels
 
-From these, draft: `PROJECT_NAME`, `ONE_LINER`, a first-pass `NOW` / `NEXT`, any obvious
-milestones, and a sketch of the `CORE_BET`. Today's date: get it with `date +%F`.
+For each label missing from the repo, `gh label create <name> --color <hex> --description "<desc>"`
+(skip ones that exist; if `bug`/`enhancement` exist with GitHub's defaults, that counts):
 
-### Step 3 — Interview for gaps only (skip if `--minimal`)
-Use **AskUserQuestion** to fill *only* what inference could not resolve confidently. Do not
-re-ask what the repo already answered. Typical gaps: the **core bet** (the non-obvious idea),
-the **near-term focus** for *Now/Next*, and confirmation of the name/one-liner if ambiguous.
-Keep it to 1–3 questions. If everything was inferable, skip this step.
+| Label | Color | Description |
+|---|---|---|
+| `needs-triage` | `fbca04` | Maintainer needs to evaluate this issue |
+| `needs-info` | `d876e3` | Waiting on reporter for more information |
+| `ready-for-agent` | `0e8a16` | Fully specified, ready for an AFK agent |
+| `ready-for-human` | `1d76db` | Requires human implementation |
+| `wontfix` | `ffffff` | Will not be actioned |
+| `bug` | `d73a4a` | Something is broken |
+| `enhancement` | `a2eeef` | New feature or improvement |
+| `spec` | `5319e7` | Parent spec issue (from /spec) — not a ticket, never dispatch |
 
-### Step 4 — Fill & write the JSON docs
-The templates are **valid JSON**. Substitute scalar tokens, and for array fields replace the
-bracketed placeholder entries with real inferred content (or, under `--minimal`, leave the
-bracketed placeholder strings intact — the file stays valid JSON either way). Write to the
-**target** root:
-- `docs/pm/status.json`          ← `templates/status.json`
-- `docs/pm/decisions/_template.json`            ← `templates/decisions/_template.json`
-- `docs/pm/decisions/0001-initial-direction.json` ← `templates/decisions/0001-initial-direction.json`
-- `docs/pm/decisions/README.md` — the decisions index, **generated** (see Step 4a)
-- **`--full` only:** `docs/pm/project-summary.json` ← `templates/optional/project-summary.json`,
-  and `docs/pm/prd.json` ← `templates/optional/prd.json`.
+Creating real labels at bootstrap is load-bearing: `gh issue create --label <missing>` fails
+outright, so this removes the publish-time failure mode from `/spec` and `/taskplan`.
 
-For any file already present (from Step 1), skip it — never clobber. After writing, the JSON must
-parse: each shape is defined in `docs/pm/schema/` (copied in Step 4b) — match it.
+### 4. Write the convention docs + domain scaffold
 
-**Token map** (scalars; substitute directly):
+- `docs/agents/issue-tracker.md` ← `templates/issue-tracker-github.md`
+  (`{{PRS_AS_REQUESTS}}` from step 2; default `no`).
+- `docs/agents/triage-labels.md` ← `templates/triage-labels.md` (identity mapping unless the repo
+  already uses different label strings — then fill the right-hand column with the real ones instead
+  of creating duplicates in step 3).
+- `CONTEXT.md` (repo root), only if absent — seed it minimally per `domain-modeling`'s
+  CONTEXT-FORMAT: the project name, the one-liner, and an empty `## Language` section. It grows
+  during `/spec` grilling sessions, not here.
+- `docs/adr/` — created lazily by `domain-modeling` when the first ADR is warranted; don't scaffold
+  placeholder files. (If migrating old decision records, step 5 creates it now.)
 
-| Token | Source |
-|---|---|
-| `{{PROJECT_NAME}}` | inferred / confirmed (Steps 2–3) |
-| `{{ONE_LINER}}` | inferred / confirmed |
-| `{{CORE_BET}}` | interview (Step 3); under `--minimal` leave the bracketed placeholder |
-| `{{NOW}}` / `{{NEXT}}` | inferred / interview — these sit inside the `now` / `next` arrays |
-| `{{DATE}}` | `date +%F` |
-| `{{OWNER}}` | `git config user.name` (fallback: leave `[name]`) |
-| `{{OPTIONAL_LAYOUT_LINES}}` | empty for lean; under `--full`, two bullets for `project-summary.json` + `prd.json` (see Step 5) |
+### 5. Migrate the old layout (only when detected, only with approval)
 
-Array fields beyond `now`/`next` (milestones, blocked, shipped, etc.) aren't single tokens — fill
-them from inference, or under `--minimal` leave the seeded bracketed placeholder entry. `status.json`
-ships with one `shipped` entry recording the bootstrap; keep it.
+If `docs/pm/` exists, offer **once**, as a single yes/no:
 
-### Step 4a — Generate the Decisions index (always)
-Write `docs/pm/decisions/README.md` — a catalog of the ADRs. **Build it from the JSON files, don't hand-author it:**
-1. List every `docs/pm/decisions/NNNN-*.json`, sorted by `number` — **exclude** `_template.json`. (On an existing project this picks up *all* prior ADRs, not just `0001`.)
-2. For each: read **`number`**, **`title`**, and **`status`** from the JSON. Link the number to the `.json` file.
-3. Mark **supersession** from the structured fields, not prose: a record whose `supersededBy` is set takes status `Superseded (by NNNN)` in the index (zero-pad NNNN). The `supersedes`/`supersededBy` pair is authoritative — no need to read the body.
-4. Emit the rows into the `templates/decisions/README.md` layout (keep its marker comment + surrounding prose).
+> Old project-kit layout detected. Migrate: convert `docs/pm/decisions/*.json` → `docs/adr/*.md`,
+> then delete `docs/pm/` (status.json, dashboard, schemas — GitHub Issues replace them). Also
+> delete `docs/spec/` and `docs/plan/` if present (their successors are parent issues and
+> sub-issue graphs)?
 
-This file is a **generated artifact**, so unlike the source docs it is *regenerated*, not skipped, on re-run — but only when it is absent or carries the `<!-- project-kit:decisions-index -->` marker. If a `README.md` exists in that folder **without** the marker, treat it as the user's own file: leave it and report it skipped.
+On yes:
 
-### Step 4b — Copy the dashboard + schemas (always; static, no tokens)
-Copy these **verbatim** (no substitution) into the target — they are tooling, not content:
-- `docs/pm/dashboard/index.html` ← `templates/dashboard/index.html`
-- `docs/pm/dashboard/serve.py`   ← `templates/dashboard/serve.py`
-- `docs/pm/schema/status.schema.json`   ← `templates/schema/status.schema.json`
-- `docs/pm/schema/decision.schema.json` ← `templates/schema/decision.schema.json`
-- `docs/pm/schema/plan.schema.json`     ← `templates/schema/plan.schema.json` (the shape `/taskplan` writes to `docs/plan/` and `/implement` consumes)
-- **`--full` only:** `docs/pm/schema/project-summary.schema.json` and `docs/pm/schema/prd.schema.json`.
+- Each `docs/pm/decisions/NNNN-*.json` → `docs/adr/NNNN-<slug>.md` in the minimal ADR format: the
+  JSON's title as `# <title>`, its context/decision/rationale collapsed to 1–3 sentences, a
+  `Status:` line only when the record was superseded/deprecated (note `superseded by ADR-NNNN`).
+  Keep the numbering.
+- `rm -rf docs/pm/` (and `docs/spec/`, `docs/plan/` if approved). The status/dashboard layer has no
+  successor by design — live state now lives in GitHub issues.
+- Remove any pre-migration `<!-- project-kit:begin -->` block content in `CLAUDE.md` (step 6
+  replaces it).
 
-These are **skip-if-exists** like the source docs — never clobber a dashboard the user has customized.
-(To pick up an updated renderer later, the user deletes the file and re-runs.) Prefer a real file
-copy (e.g. `cp`) so bytes are identical; only fall back to Read+Write if needed.
+On no: leave everything, note the old layout coexists, and continue.
 
-### Step 5 — Merge into `CLAUDE.md` (always)
-The block to insert is `templates/CLAUDE.block.md` (with tokens substituted). It is delimited by
-`<!-- project-kit:begin … -->` / `<!-- project-kit:end -->`.
+### 6. Merge into `CLAUDE.md`
 
-- **`--full`:** set `{{OPTIONAL_LAYOUT_LINES}}` to:
-  ```
-  - `docs/pm/project-summary.json` — the thesis / "why". Read first for full context; changes slowly. Shape: `schema/project-summary.schema.json`.
-  - `docs/pm/prd.json` — the current version's buildable requirements. Shape: `schema/prd.schema.json`.
-  ```
-  Otherwise set it to empty (the line vanishes).
-- **No `CLAUDE.md` exists:** create it as `# {{PROJECT_NAME}}`, a blank line, `{{ONE_LINER}}`,
-  a blank line, then the substituted block.
-- **`CLAUDE.md` exists and already contains `<!-- project-kit:begin -->`:** this is a re-run —
-  replace everything between the two markers (inclusive) with the freshly substituted block. Leave
-  the rest of the file exactly as-is.
-- **`CLAUDE.md` exists with no markers:** append the substituted block at the end of the file. **But**
-  if the file already has a `## Status` heading, omit the block's own `## Status` section (keep only
-  *Repo layout* + *Keeping the record current*) so you don't create a second Status section — and say
-  so in the report.
+The block is `templates/CLAUDE.block.md` (substitute `{{TRIAGE_SUMMARY}}` — e.g. "Default triage
+vocabulary (needs-triage / needs-info / ready-for-agent / ready-for-human / wontfix + bug /
+enhancement)"). Delimited by `<!-- project-kit:begin -->` / `<!-- project-kit:end -->`:
 
-Never edit any part of an existing `CLAUDE.md` outside the marked region.
+- No `CLAUDE.md` → create it: `# <name>`, the one-liner, then the block.
+- Markers present → replace between them (re-run safe). Never touch anything outside the markers.
+- No markers → append the block at the end.
 
-### Step 6 — Report
-Print a short tree of what was **created** vs. **skipped** (already existed), note how `CLAUDE.md`
-was handled (created / block-updated / appended / Status-section-omitted), and end with the next
-steps: *"Fill the bracketed placeholders in `docs/pm/status.json` and `decisions/0001-…json`, then
-view it live: `python3 docs/pm/dashboard/serve.py`. Commit when ready."*
+### 7. Report
 
-## Design rules (hold to these)
-- **Idempotent / non-destructive.** Safe to re-run. Never overwrite a user's file. The two *generated*
-  artifacts — the `CLAUDE.md` marked region and `decisions/README.md` (its index marker) — are refreshed
-  in place; everything else (JSON docs, schemas, dashboard) is skip-if-exists.
-- **JSON is the source of truth; the dashboard is a view.** Agents read and write the JSON; humans read
-  the rendered dashboard. There is no second copy to keep in sync.
-- **Generalize, don't copy.** These templates carry the *patterns* (layer split, the self-maintaining
-  rule, the ADR skeleton, the dated/falsifiable discipline) — never any one project's domain content.
-- **Infer-first, interview-for-gaps.** Ship filled content; ask only what the repo can't tell you.
-- **Lean by default.** Status + ADRs + schemas + dashboard + CLAUDE rules; thesis/spec are opt-in via `--full`.
-- **Keep entries specific and falsifiable** — the docs you scaffold should model the discipline: cite
-  dates, link commits/ADRs, snapshot-not-journal.
+Print created vs skipped (labels, files, block handling, migration outcome), then the next step:
+
+> Bootstrap done. Start a feature with `/spec <idea>`; triage inbound issues with `/triage`.
+
+## Design rules
+
+- **Idempotent / non-destructive.** Safe to re-run; skip-if-exists everywhere except the marked
+  block. The migration is the one destructive path, and it runs only on explicit approval.
+- **GitHub is the only state store.** No status file, no dashboard, no milestone layer — the parent
+  issue's sub-issue progress is the status view.
+- **Labels are created, not just documented** — a documented-but-missing label is a publish-time
+  crash in a downstream skill.
+- **The glossary and ADRs belong to `domain-modeling`** — this skill scaffolds the seed and the
+  layout, never content.

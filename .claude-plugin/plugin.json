@@ -1,7 +1,7 @@
 {
   "name": "workflow",
-  "version": "0.12.0",
-  "description": "Spec-driven delivery pipeline: /spec (PRD) -> /taskplan (partitioned plan) -> /implement (parallel orchestrated build; /implement-orca for Orca-dispatched workers) -> /cleanup (PR, CI, merge, teardown). Plus ticket-level execution over GitHub Issues: /frontier fans a wide graph out to parallel Orca worktrees (one PR per ticket), /caravan walks a mostly-linear graph on one integration branch (one PR total; /caravan-orca for Orca-terminal workers). And /project-kit project scaffolding.",
+  "version": "1.0.0",
+  "description": "GitHub-issue-native delivery pipeline: /project-kit (labels + conventions + domain docs) -> /spec (grilled PRD as a parent issue) -> /taskplan (dependency-linked sub-issues) -> /implement (1 parent = 1 worktree = 1 branch = 1 PR; graph-walking orchestrator, subagent or --orca terminal workers, implement-core doctrine) -> /cleanup (PR, CI, merge, close parent, teardown). Plus /triage for inbound raw issues, and the grilling + domain-modeling engines (CONTEXT.md glossary, minimal ADRs).",
   "author": {
     "name": "SangUk Park"
   },
@@ -10,6 +10,8 @@
     "orchestration",
     "spec",
     "planning",
+    "github-issues",
+    "sub-issues",
     "subagents",
     "claude-code"
   ]

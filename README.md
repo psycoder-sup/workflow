@@ -1,49 +1,54 @@
 # workflow
 
-Claude Code plugin: a spec-driven delivery pipeline.
+Claude Code plugin: one GitHub-issue-native delivery pipeline.
 
 ```
-/spec  →  /taskplan  →  /implement  →  /cleanup
-(PRD)     (partitioned   (parallel      (PR, CI poll,
-           plan JSON)     orchestrated   merge, teardown)
-                          build)
+/project-kit          (once per repo: labels, tracker conventions, CONTEXT.md + docs/adr/, CLAUDE.md block)
+     │
+/spec                 grilling + domain-modeling → parent issue (label `spec`); the issue body IS the spec;
+     │                too wide for one PR → split into sibling parents with blocked-by edges
+/taskplan <parent>    vertical-slice sub-issues: native --parent + --blocked-by, ready-for-agent by
+     │                construction, taskplan metadata block (files_owned / model / method); quiz-gated
+/implement <parent>   1 parent = 1 worktree = 1 branch = 1 PR; walks the live graph — parallel waves when
+     │                file-disjoint, serial when a chain; one fresh worker per ticket (subagents, or
+     │                --orca for Orca terminals); lands `Ticket: #<n>` commits; workers follow implement-core
+/cleanup              PR (adopts /implement's) → poll CI → merge on green → close the parent → teardown
 ```
 
-Plus a second delivery path for deep, coupled work — GitHub tickets executed off their dependency
-graph, wide graphs fanned out, linear graphs walked:
+Inbound raw bugs/ideas enter through **`/triage`** (verify → categorise → grill if murky → agent
+brief → `ready-for-agent`), then `/implement <n>` picks them up as standalone builds.
 
-```
-(mattpocock/skills)                    (this plugin)
-/to-spec  →  /to-tickets       →       /frontier  →  /cleanup     (wide graph: N worktrees,
-(1 issue)    (N issues +               or                          1 agent + 1 PR per ticket)
-              blocked_by edges)        /caravan   →  /cleanup     (linear graph: 1 branch,
-                                                                   1 agent per ticket, 1 PR)
-```
+GitHub is the only state store: specs are parent issues, tickets are native sub-issues, dependencies
+are native blocked-by edges, progress is the parent's sub-issue summary. The durable outputs of
+thinking live in git: `CONTEXT.md` (glossary) + `docs/adr/` (minimal ADRs), maintained by
+`domain-modeling` during grilling sessions. Requires `gh` ≥ 2.94.
 
-See [docs/flows/tickets-to-orca.md](docs/flows/tickets-to-orca.md) for when to take which path.
-
-Plus `/project-kit` — scaffolds `docs/pm/` project management (status, decisions, schemas, dashboard) into any repo.
+Label vocabulary and issue/ADR conventions follow
+[mattpocock/skills](https://github.com/mattpocock/skills); `/triage`, `grilling`, and
+`domain-modeling` are ports of the same.
 
 ## Skills
 
 | Skill | Stage | What it does |
 |---|---|---|
-| `/spec` | define | Interview-driven PRD at `docs/spec/<slug>.md` — objective, structure, testing, boundaries — finished by a delegated fresh-eyes review (opus) that revises the doc in place. |
-| `/taskplan` | plan | Decompose a spec into atomic tasks with file ownership, model tier, and method; derive parallel waves into `docs/plan/<slug>.json`. |
-| `/implement` | build | Orchestrate the plan: file-disjoint waves of parallel `code-implementer` subagents, integrate, verify, review. Logs every run (`orchlog.py`). |
-| `/implement-orca` | build | Same orchestration doctrine, but workers are Orca-dispatched `claude` CLI terminals (via the official `orchestration` skill): visible panes + runtime task/dispatch provenance. |
-| `/frontier` | build | Ticket-level parallelism: query GitHub for takeable tickets (open, `ready-for-agent`, unblocked, unassigned), claim by assignee, dispatch one Orca worktree + `claude` worker per ticket. Full handoff — no coordinator. |
-| `/caravan` | build | Ticket-level serial walk: work a parent's mostly-linear ticket graph on one integration branch, one fresh `code-implementer` per ticket, each verified slice landed as a `Ticket: #<n>` commit — then one PR closing every child. |
-| `/caravan-orca` | build | Same campaign doctrine, but each ticket's worker is a `claude` CLI session in its own Orca terminal via supervised `orchestration` (task-create → dispatch --inject → worker_done): visible panes + task/dispatch provenance, one fresh terminal per ticket. |
-| `/cleanup` | ship | Open the PR, poll CI to conclusive (`pollci.py`), auto-merge on green, tear down the worktree + branches. |
-| `/project-kit` | setup | Scaffold `docs/pm/` (status.json, decisions, schemas, dashboard) and the CLAUDE.md block. |
+| `/project-kit` | setup | Create the 8 labels on GitHub, write `docs/agents/{issue-tracker,triage-labels}.md`, seed `CONTEXT.md`, wire the CLAUDE.md block. Migrates the old `docs/pm/` JSON layout (decisions → ADRs) on approval. |
+| `/spec` | define | Frontier-round grilling (with `domain-modeling` writing glossary/ADRs as decisions land) → Pocock-template spec → split check → fresh-eyes review → published parent issue. |
+| `/taskplan` | plan | Decompose a parent into dependency-linked sub-issues sized for parallel waves; user approves the breakdown before anything is published. The issue graph IS the plan. |
+| `/implement` | build | Orchestrate the graph: claim all children, walk in dependency order, fan out file-disjoint unblocked tickets, verify + land each as a `Ticket: #<n>` commit, one PR closing every child. `--orca` swaps subagent workers for Orca terminal sessions. Logs every run (`orchlog.py`). |
+| `implement-core` | doctrine | The per-ticket worker contract all `/implement` briefs are built from (contract selection, CONTEXT/ADR discipline, method, self-verify, IMPLEMENTER REPORT). Never invoked directly. |
+| `/triage` | inbound | State machine for raw issues/PRs: verify the claim, grill if needed, write agent briefs, maintain `.out-of-scope/`. |
+| `/cleanup` | ship | Adopt/open the PR, poll CI to conclusive (`pollci.py`), auto-merge on green, close the parent when `completed == total`, tear down the worktree. |
+| `grilling` | engine | Relentless design-tree interview in frontier rounds. Used by `/spec` and `/triage`; also directly for ad-hoc stress-testing. |
+| `domain-modeling` | engine | Glossary (`CONTEXT.md`) + minimal ADRs (`docs/adr/`), maintained inline as decisions crystallize. |
 
 ## Versioning
 
 Two independent version numbers, on purpose:
 
 - **`.claude-plugin/plugin.json` `version`** — the plugin's semver (what `/plugin` installs and updates).
-- **`WORKFLOW_VERSION` in `skills/implement/orchlog.py`** — the run-log schema version, stamped into every `orchlog` record. It bumps only when the orchestration doctrine or log semantics change, so runs stay comparable across plugin releases (only compare metrics within the same schema version).
+- **`WORKFLOW_VERSION` in `skills/implement/orchlog.py`** — the run-log schema version, stamped into
+  every `orchlog` record. It bumps when the orchestration doctrine or log semantics change, so runs
+  stay comparable across plugin releases (only compare metrics within the same schema version).
 
 ## Install
 

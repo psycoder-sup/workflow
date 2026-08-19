@@ -1,128 +1,163 @@
 ---
 name: taskplan
 description: >
-  Decompose a spec into atomic, independent tasks with checkable acceptance criteria, an explicit
-  file boundary, a model tier, and an implementation method — then derive parallel waves and write
-  docs/plan/<slug>.json. The output is consumed directly by /implement (its step 1 accepts a
-  plan-file path). Use after /spec, before /implement, for multi-task work.
+  Decompose a parent spec issue into vertical-slice sub-issues on GitHub — native --parent links,
+  native blocked-by dependency edges, ready-for-agent by construction — each carrying checkable
+  acceptance criteria and an advisory taskplan metadata block (files_owned, model tier, method) that
+  /implement uses for file-disjoint waves and model routing. Quizzes the user for approval BEFORE
+  publishing anything. The plan stage between /spec and /implement; the issue graph it publishes IS
+  the plan — no plan file.
 trigger: /taskplan
 user-invocable: true
-argument-hint: "<path to docs/spec/<slug>.md | feature description>"
-allowed-tools: ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "AskUserQuestion"]
+argument-hint: "<parent issue number, e.g. 42>"
+allowed-tools: ["Read", "Bash", "Glob", "Grep", "AskUserQuestion", "WebFetch"]
 ---
 
 # /taskplan
 
-Turn a spec into a **buildable, partitioned plan**. This is the *plan* stage of the
-spec → taskplan → implement pipeline. It benchmarks agent-skills `planning-and-task-breakdown` and
-folds in `/implement`'s partition rules (steps 1–2) so the plan it emits is something
-`/implement` can consume with zero re-planning.
+Turn a parent spec issue into a **published, dependency-linked sub-issue graph**. This is the *plan*
+stage of the pipeline: `/spec` published the parent (the spec is its body); `/taskplan` decomposes
+it into tickets sized and shaped so `/implement`'s walk is nearly free — every ticket already
+carries its acceptance criteria, its blocking edges, and its orchestration metadata.
 
-**The key seam:** `/implement` already accepts a plan-file path as its argument ("If a plan file
-was passed as the argument, start from it"). So this skill's whole job is to produce a plan file in
-the shape that makes `/implement`'s partition nearly free — every task already carries its
-`files_owned`, `depends_on`, model tier, and method.
+**The output is the issue graph itself.** There is no plan file: a JSON duplicating the graph goes
+stale the moment anyone re-triages an issue.
 
 ## When to use
 
-- **Use** after `/spec` (or with a clear feature description) when the work is more than one task.
-- **Skip** for a single obvious task — dispatch one implementer directly; a plan buys nothing.
-- Output feeds `/implement docs/plan/<slug>.json`.
+- **Use** after `/spec`, on a parent issue carrying the `spec` label, when the work is more than one
+  ticket.
+- **Skip** for a single obvious ticket — `/implement <n>` takes a standalone issue directly.
+
+## Preconditions
+
+- **`gh` ≥ 2.94** (native `--parent` / `--blocked-by` flags). Check once; older → stop and say so.
+- The argument is an open issue. If it doesn't carry the `spec` label, warn (it may be a raw idea
+  that should go through `/spec` first) but proceed if the user confirms.
+- The repo has the triage labels (`/project-kit` creates them). If the agent-ready label is missing
+  (`gh label list`), stop — `gh issue create --label <missing>` fails outright.
 
 ## Process
 
-### 1. Read the source
-If the argument is a path to `docs/spec/<slug>.md`, read it — it's the contract. Otherwise build a
-quick spec sketch in your head from the description (and consider running `/spec` first if the
-"what" is fuzzy). Reuse `<slug>` from the spec.
+### 1. Read the spec, the domain, the code
 
-### 2. Decompose into atomic tasks
-Break the work into the smallest **independent** units:
-- **Size** — aim ~100 lines of change per task. Bigger → split; trivially tiny → merge.
-- **Acceptance criteria** — each task gets a checkable contract (a test passes, an output matches).
-  If you can't write crisp criteria, the task isn't understood yet — refine it.
-- **File ownership** — for each task, the exact globs/paths it will create or modify. This is the
-  boundary that makes parallelism safe.
+- `gh issue view <parent> --comments` — the body is the contract; comments may refine it.
+- Read `CONTEXT.md` (or `CONTEXT-MAP.md`) and relevant `docs/adr/*` — ticket vocabulary MUST match
+  the glossary, and slices MUST respect ADRs. Absent files → proceed silently.
+- Explore the code the spec touches. Look for **prefactoring** opportunities — "make the change
+  easy, then make the easy change." Prefactoring becomes the first ticket(s).
 
-### 3. Partition — draw the file-ownership map (/implement rules)
-- **Disjoint file sets → can run in parallel** (same wave).
-- **Two tasks share a file → CONFLICT.** Resolve by (a) one task owns that file + both pieces, or
-  (b) serialize them via `depends_on`, or (c) split the shared edit into its own tiny task.
-- **Hotspot files are conflict magnets — never in two tasks' boundaries at once:** router/route
-  tables, DI containers, barrel `index.*`, schema/migrations, lockfiles, shared types.
-- **Sequential dependency** (task B needs task A's API) → set `depends_on: ["A"]`; don't fake
-  parallelism.
+### 2. Draft vertical slices
 
-### 4. Route a model tier per task (/implement step-3 table)
-Pick the cheapest tier that clears both the task's *intelligence* and *taste* bar:
-- **haiku** — mechanical/deterministic: renames, moving files, config/JSON, boilerplate.
-- **sonnet** — standard, well-specified, pattern-following (the workhorse default; most tasks).
-- **opus** — subtle correctness, tricky edge cases, or real human-facing design judgment.
-- Fable is **not** available for delegation — never route there.
+Break the work into **tracer-bullet tickets**:
 
-### 5. Attach the method (the implement-stage benchmark)
-Every task inherits `defaultMethod` unless it overrides. The default encodes tdd + source-driven +
-incremental, and `/implement` injects it into each code-implementer brief's `## Method` section:
-- **tdd** — "Write the failing test first (red), then the minimal code to pass (green), then
-  refactor. Test files must sit inside this task's files_owned."
-- **sourceDriven** — "Ground every API/library decision in official docs (context7/WebFetch); cite
-  the source. Do not guess an API surface."
-- **incremental** — "Ship the thinnest vertical slice that meets the criteria; gate risky/incomplete
-  paths behind a feature flag with a safe default."
+- Each slice cuts a narrow but COMPLETE path through every layer it touches (schema, API, UI,
+  tests) — vertical, NOT a horizontal slice of one layer.
+- A completed slice is demoable or verifiable on its own.
+- Each slice is sized to fit one fresh context window (roughly ≤ ~150 lines of change; bigger →
+  split, trivially tiny → merge into a neighbor).
+- Prefactoring first.
 
-Override per task only when warranted (e.g. a docs-only task relaxes `tdd`).
+Give each ticket its **blocking edges** — the tickets that must land before it can start. No
+blockers = startable immediately. Sequence for parallelism where it's real: two slices with disjoint
+file sets and no data dependency get **no edge between them**, so `/implement` can fan them out.
+Don't fake independence — a false missing edge dispatches work in the wrong order.
 
-> Method placement note: keep each task's `files_owned` inclusive of its own test files, or the tdd
-> rule collides with the boundary. Shared test fixtures/harnesses are hotspots — treat them like any
-> other shared file in step 3.
+**Wide refactors are the exception to vertical slicing.** One mechanical change with codebase-wide
+blast radius (rename a column, retype a shared symbol) can't land green as a tracer bullet —
+sequence it as **expand–contract**: an *expand* ticket (add the new form beside the old; nothing
+breaks), *migrate* tickets in blast-radius-sized batches (each blocked by expand, CI green batch to
+batch), and a *contract* ticket (delete the old form, blocked by every migrate batch).
 
-### 6. Derive waves + parallel width
-Topologically order tasks: a task lands in the earliest wave after all its `depends_on` are in
-earlier waves AND its `files_owned` are disjoint from every other task already placed in that wave.
-**Collapse linear chains first**: consecutive tasks that would each sit alone in their wave (A → B
-→ C with nothing beside them) merge into one task with a multi-step brief — width-1 waves are pure
-dispatch overhead in `/implement`. Then compute **`parallelWidth W`** = the size of the widest
-wave, and **`V`** = the task count after collapsing.
-- **`W >= 2` and `V >= 5`** → real parallel work at real volume; `/implement` is justified.
-- **`W >= 2` but `V <= 4`** → parallel but small. Record it, and **note**: "Small-parallel work —
-  `/implement`'s volume gate will route this to direct dispatch (parallel implementers, no run
-  machinery)." Don't pad the task count to clear the gate.
-- **`W == 1`** → the work is serial (every wave has one task). Record it, and **warn**: "Serial work
-  — `/implement`'s W>=2 gate will reject this; route to a single `code-implementer` or a normal
-  session instead." Don't invent fake parallelism to dodge the gate.
+### 3. Attach orchestration metadata per ticket
 
-### 7. Write `docs/plan/<slug>.json`
-Conform to `docs/pm/schema/plan.schema.json` (project-kit scaffolds it; in a repo without one, read
-the shape from the plugin's template at
-`${CLAUDE_PLUGIN_ROOT}/skills/project-kit/templates/schema/plan.schema.json`). Include
-`slug`, `spec` (path or ""), `createdWith`,
-`defaultMethod`, `tasks[]`, `waves[]`, `parallelWidth`. Then validate it parses and matches the
-schema (`python3 -c "import json,sys; json.load(open(sys.argv[1]))" docs/plan/<slug>.json`; if
-`jsonschema` is installed, check against the schema too).
+- **`files_owned`** — the globs/paths the ticket will create or modify. This is what lets
+  `/implement` judge file-disjoint fan-out. Include the ticket's own test files. **Hotspot files**
+  (routers, DI containers, barrel `index.*`, schema/migrations, lockfiles, shared types) must never
+  appear in two unordered tickets — serialize them with an edge or single-owner the file.
+- **`model`** — cheapest tier whose intelligence *and* taste clear the ticket's bar: `haiku`
+  (mechanical, fully specified — rare for a vertical slice), `sonnet` (standard pattern-following —
+  the default), `opus` (subtle correctness or real design judgment — justify each). Never `fable`.
+- **`method`** — `tdd` (test-first at the spec's named seams; the default), `source-driven` (every
+  external API grounded in official docs), `incremental` (thinnest slice, flags for risky paths).
+  Methods compose; see `implement-core` for the worker-side definitions.
 
-### 8. Report + hand off
-Print: task count, the wave layout (which tasks in which wave), `W`, and schema-valid ✓. Then the
-next step: **`/implement docs/plan/<slug>.json`** (or, if `W == 1`, the single-implementer route;
-if `V <= 4`, note that `/implement` will take its direct-dispatch path).
+### 4. Quiz the user — the gate before publishing
+
+Present the breakdown as a numbered list. Per ticket: **Title**, **Blocked by**, **What it
+delivers**, **tier**. Then ask:
+
+- Does the granularity feel right? (too coarse / too fine)
+- Are the blocking edges correct — does each ticket only depend on what genuinely gates it?
+- Should any tickets be merged or split further? Any tier overrides?
+
+Iterate until approved. **Nothing is published before approval** — sub-issue creation is
+outward-facing, and deleting wrongly-cut issues and re-linking edges is far worse than one approval
+round.
+
+### 5. Publish — one sub-issue per ticket, in dependency order
+
+Create blockers first so their numbers exist for the edges:
+
+```bash
+gh issue create --title "<ticket title>" --body-file <tmp> \
+  --parent <parent> --label "<agent-ready label>" [--blocked-by <m> ...]
+```
+
+(Resolve the agent-ready label from `docs/agents/triage-labels.md`; default `ready-for-agent`.
+Edges can also be added after creation: `gh issue edit <n> --add-blocked-by <m>`.)
+
+**Ticket body template:**
+
+```markdown
+## What to build
+
+The end-to-end behaviour this ticket makes work, from the user's perspective — not
+layer-by-layer implementation.
+
+## Acceptance criteria
+
+- [ ] Criterion 1 (checkable — a test passes, an output matches)
+- [ ] Criterion 2
+
+## Blocked by
+
+- #<m> — <why it gates this>, or "None — can start immediately".
+
+<!-- taskplan: {"files_owned": ["src/foo/**", "tests/foo/**"], "model": "sonnet", "method": "tdd"} -->
+```
+
+The visible body stays durable — behaviour and criteria, **no file paths, no code snippets** (they
+go stale; exception: a prototype-derived snippet that encodes a decision more precisely than prose).
+The machine contract lives in the HTML comment, invisible to humans and advisory to orchestrators —
+`/implement` falls back to judging at dispatch time when it's missing.
+
+**Never close or modify the parent issue** beyond the sub-issue links themselves.
+
+### 6. Report + hand off
+
+Print: the published graph (number → title → blocked-by → tier), the wave structure it implies
+(which tickets are simultaneously unblocked and file-disjoint), and the next step:
+**`/implement <parent>`** (add `--orca` for visible terminal workers). If the graph came out wider
+or deeper than the spec implied (≥ ~10 tickets, or ≥ 2 independently-shippable clusters), say so —
+that's a signal the parent should have been split at `/spec` time, and it's cheaper to split now
+than after half the graph lands.
 
 ## Rules
-- **Independence is discovered, not forced** — only split what's genuinely independent; don't shard a
-  serial job into fake parallel tasks.
-- **Acceptance criteria are the contract** — no task without checkable criteria.
-- **File ownership is the safety boundary** — disjoint or it's not parallel.
-- **Right-size the model** — cheapest tier that clears the bar; don't default everything to opus.
-- **Don't implement here** — /taskplan produces the plan; the code belongs to the implementers.
+
+- **Independence is discovered, not forced** — only omit an edge where slices are genuinely
+  independent; don't shard a serial job into fake parallel tickets.
+- **Acceptance criteria are the contract** — no ticket without checkable criteria.
+- **Vocabulary from `CONTEXT.md`, boundaries from `docs/adr/`** — a ticket that contradicts an ADR
+  must say so explicitly, not silently override it.
+- **Approval before publication, always.**
+- **Right-size the model** — everything-on-opus means the routing wasn't done.
+- **Don't implement here** — the code belongs to `/implement`'s workers.
 
 ## Red flags
-- A task has no acceptance criteria, or "make it work" as its only one → not ready.
-- Two tasks in the same wave list the same file → partition is wrong; re-do step 3.
-- Every wave has one task (`W == 1`) but you still recommend orchestrating → stop; it's serial.
-- A hotspot file appears in two boundaries → serialize or single-owner it.
-- Everything routed to `opus` → you're not banking the tier savings; recheck step 4.
 
-## Verification
-- [ ] `docs/plan/<slug>.json` exists, is valid JSON, and matches `plan.schema.json`.
-- [ ] Every task has criteria, a disjoint-within-wave `files_owned`, a model tier, and a method.
-- [ ] `waves` are consistent with `files_owned` (disjoint per wave) and `depends_on` (deps earlier).
-- [ ] `parallelWidth` equals the widest wave; if `W == 1`, the serial warning was surfaced.
-- [ ] Reported the layout and pointed at `/implement docs/plan/<slug>.json`.
+- A ticket has no acceptance criteria, or "make it work" as its only one → not ready.
+- Two unordered tickets list the same file in `files_owned` → missing edge or wrong ownership.
+- A hotspot file in two unordered tickets → serialize or single-owner it.
+- The graph is one long chain of 10+ tiny tickets → slices too thin; merge neighbors.
+- You're writing a plan file → wrong era; the graph is the plan.
