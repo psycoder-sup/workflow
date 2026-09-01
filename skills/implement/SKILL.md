@@ -41,7 +41,8 @@ provenance) — see the Orca transport section; the doctrine is identical either
   (build/test/git), integrate, land commits, decide.
 - **Worker** — implements ONE ticket per the [`implement-core`](../implement-core/SKILL.md)
   doctrine: contract selection, CONTEXT.md/ADR discipline, the prescribed method, self-verify, the
-  IMPLEMENTER REPORT. One ticket, one fresh worker, always.
+  IMPLEMENTER REPORT. One ticket, one fresh worker, always — a worker never crosses into a second
+  ticket, though it may be sent back to rework the slice it just built (Step 5.3).
 - **`verifier` subagent (optional)** — independently reproduces build/tests, read-only.
 - **`/code-review`, `/security-review`** — fresh-eyes review of the integrated diff at the end.
 
@@ -133,6 +134,19 @@ one comment on the parent (skip if resuming and it exists):
 gh issue comment <parent> --body "🛠️ /implement is working this parent on branch \`<branch>\` — one integration branch, one PR. Children stay open until it merges."
 ```
 
+### Build the campaign header — once, here
+
+Assemble block `[A]` of [`implement-core` §0](../implement-core/SKILL.md) now, before any dispatch:
+the doctrine, the orientation digest (CONTEXT.md/CONTEXT-MAP.md glossary excerpt, the ADR index for
+the area this parent touches, repo conventions, and the **exact** build / test / typecheck commands
+resolved from CI config or package scripts), and the IMPLEMENTER REPORT format.
+
+Resolve those commands **here, not per worker** — every worker that has to rediscover the test
+command spends its own context on a fact you already know. Then **freeze it**: paste the same bytes
+into every brief for the rest of the campaign, subagent and Orca alike. On resume, rebuild it the
+same way from the same sources. If it genuinely has to change mid-campaign (a new ADR lands), that
+is a new header from that point and one accepted cold start — say so in your report.
+
 ## Step 3 — Walk the graph
 
 Topologically order the open, unlanded children by their `blockedBy` edges. **A blocker counts as
@@ -180,21 +194,31 @@ reason). Pass it explicitly on every dispatch:
 **Fable is not available for delegation — Opus is the ceiling.** Escalate one tier on rework: a
 cheap worker that failed self-verify signals the bar was higher than judged.
 
+**Tier affinity within a wave (advisory).** Caches are model-scoped, so a wave mixing haiku, sonnet
+and opus shares nothing across its workers. On a *genuine* toss-up between two tiers, prefer the
+wave's dominant tier — a "cheap" ticket routed haiku-alone can cost more than the same ticket routed
+sonnet alongside two other sonnets. This never justifies under-routing a ticket that needs the
+higher tier; correctness outranks the cache.
+
 ### The brief
 
-Compose each worker's brief per [`implement-core`](../implement-core/SKILL.md): the **contract
-verbatim** (its §1 table decides body vs agent-brief comment — fetch with `--comments`), the
-CONTEXT.md/ADR discipline, the ticket's **method**, the **file boundary** (only when fanned out —
-in a serial stretch the branch is the boundary), the repo's **exact verification commands** (from CI
-config or package scripts — a worker that guesses the test command wastes its context), the rules,
-and the IMPLEMENTER REPORT output block. Front-load everything; workers share no memory.
+Lay every brief out per [`implement-core` §0](../implement-core/SKILL.md): the **frozen campaign
+header from Step 2, pasted unchanged**, then the **ticket block** — the **contract verbatim** (§1's
+table decides body vs agent-brief comment — fetch with `--comments`), the ticket's **method**, and
+the **file boundary** (only when fanned out; in a serial stretch the branch is the boundary).
+
+Everything shared lives in the header and is written once; everything per-ticket lives after it.
+Never restate a header fact inside the ticket block, and never let a ticket number, file list or
+tier name drift up into the header — either breaks the shared prefix for every worker. Front-load
+everything; workers share no memory.
 
 ## Step 4 — Dispatch
 
 ### Default transport — subagents
 
 Spawn each wave's workers in a single message, one `Agent` call each
-(`subagent_type: "code-implementer"`, explicit `model:` per the routing).
+(`subagent_type: "code-implementer"`, explicit `model:` per the routing). Dispatching a wave in one
+message also keeps its shared header warm across the wave.
 
 ### `--orca` transport — Orca terminal workers
 
@@ -218,11 +242,17 @@ orca orchestration dispatch --task <task_id> --to <handle> --inject --json
 
 Orca workers are top-level claude sessions — the `code-implementer` agent definition does NOT apply,
 so the brief must carry the full implement-core doctrine inline (boundary, STOP-via-`ask` rule,
-report block). The tier lives in the argv, so **escalation means a new terminal**, not a re-dispatch.
-Supervise per the orchestration skill: rolling `check --wait` for `worker_done`/`escalation`; a
-timeout is a checkpoint, not a failure; answer `ask`s with `reply`; never kill a working worker.
-Close worker terminals at the end of the run, not between waves (idle same-tier workers may be
-reused across waves).
+report block). It carries the **same campaign header bytes** as a subagent brief; that is how
+`--orca` gets the same shared prefix. The tier lives in the argv, so **escalation means a new
+terminal**, not a re-dispatch. Supervise per the orchestration skill: rolling `check --wait` for
+`worker_done`/`escalation`; a timeout is a checkpoint, not a failure; answer `ask`s with `reply`;
+never kill a working worker.
+
+Close worker terminals at the end of the run, not between waves. An idle same-tier terminal may be
+re-targeted for a later ticket, but **you reuse the terminal, never the context**: `/clear` it first,
+so the next ticket starts on a fresh session exactly as the one-fresh-worker-per-ticket rule
+requires. Be clear-eyed about what that buys — `/clear` discards the session's cache too, so terminal
+reuse saves process startup, not tokens. Spawning a new terminal instead is equally correct.
 
 ## Step 5 — Integrate, verify, land — per ticket
 
@@ -232,8 +262,19 @@ reused across waves).
 2. **Verify yourself**: run the full build + test suite (running commands is orchestration). Delegate
    long-log suites (e2e / UI / integration) to a `verifier` subagent (`model: "sonnet"`) that
    returns a triaged ≤20-line verdict — never raw logs into this session.
-3. Anything red or `needs-attention`/`fail` → **re-delegate a fix to a fresh worker** (never patch
-   inline), one tier up if the original failed its own self-verify.
+3. Anything red or `needs-attention`/`fail` → **re-delegate the fix; never patch inline.** Which
+   worker depends on the failure:
+   - **Same slice, same tier** (a review finding, a failed assertion on work that was otherwise on
+     track) → **continue the worker that built it** — subagent: `SendMessage`; Orca: `reply` on its
+     task. This is the one place reuse is right: its context is both already warm and actually about
+     this ticket. It stays one worker on one ticket, so the rule holds.
+   - **Escalating a tier** (the original failed its own self-verify) → **a fresh worker** one tier
+     up. A subagent's model is fixed at spawn and an Orca tier lives in the argv, so a new session
+     is required either way.
+   - **The approach was wrong at root**, or the worker is gone → **a fresh worker** at the same tier;
+     a warm context that went down the wrong path is a liability, not an asset.
+
+   Log `--rework` in all three cases.
 4. **Land it** — one commit per ticket, committed by you:
 
    ```
@@ -304,8 +345,11 @@ When every child has landed:
 - **Scope is one parent.** Never sweep the repo; never dispatch the parent itself.
 - **No acceptance criteria → not a ticket.** Refuse it, whatever its label says.
 - **Claim all children up-front; announce on the parent.** The assignee set is the campaign lock.
+- **The campaign header is built once and frozen.** Byte-identical in every brief, both transports;
+  no ticket number, file list or tier name in it.
 - **One fresh worker per ticket.** Never feed two tickets to one worker; never let a worker
-  "continue" into the next ticket.
+  "continue" into the next ticket. The only continuation allowed is a same-tier rework of the slice
+  that worker just built (Step 5.3) — still one worker, still one ticket.
 - **Landed = trailer on the pushed branch. Closed = merged to main.** Never close a child by hand.
 - **Fan out only on disjoint files, same tree.** Overlap → serialize. Isolated-worktree agents are
   banned (wrong base).
@@ -327,6 +371,10 @@ When every child has landed:
   the branch. Re-run the resume grep.
 - Commits with no `Ticket:` trailer beyond review-fix commits → work landed outside the walk;
   reconcile before continuing.
+- Two briefs whose headers differ by even one byte → the shared prefix is gone and every worker pays
+  full price. Diff them against the Step 2 header.
+- A worker's report shows it grepping for the test command or re-reading the glossary → the header
+  didn't carry what it should, and every other worker is repeating the same waste.
 - The PR body is missing a child's `Closes` line → that child stays open forever. Landed trailers
   and `Closes` lines must match one-to-one.
 - The parent appears in your dispatch list → the guards didn't run; a spec is not a ticket.
@@ -341,6 +389,10 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/implement/orchlog.py report --recent 20
 `/taskplan` slices too big; high `deviated` → criteria not tight. **Model fit**: rework clustered in
 a cheap tier → route those up; everything on opus → not banking the tier savings. **Cost**: an
 orchestrator-dominated run is overhead-heavy — the fix is coarser slices in `/taskplan`, not less
-planning. Serial walks land at `peak_width == 1` **by design** — that is not a gate leak in this
+planning. Slice size is the dominant lever generally: each ticket carries a fixed cost (a cold
+prefix plus its share of orientation) that no amount of dispatch tuning removes, so halving the
+ticket count halves it. Worker reuse is not an alternative — carried context is billed on every
+turn, so a worker that keeps a finished ticket's transcript pays for it repeatedly while getting
+worse at the next one. Serial walks land at `peak_width == 1` **by design** — that is not a gate leak in this
 graph-walking model. Ignore the COST block for `orca-` runs (worker tokens uncaptured). When you
 change this skill or the agent definitions in response, bump `WORKFLOW_VERSION` in `orchlog.py`.

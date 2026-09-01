@@ -18,10 +18,41 @@ sub-issue published by `/taskplan`, or a standalone issue triaged to `ready-for-
 one ticket, one fresh context.
 
 Orchestrators (`/implement`, with or without `--orca`): compose each worker's brief from the
-sections below — the contract selection, the ticket's own values, and the rules. A subagent worker
-receives this doctrine inside its brief; an Orca terminal worker (a top-level `claude` session with
-no agent definition) must receive it the same way. Either way the brief is self-contained: workers
-share no memory with the orchestrator or with each other.
+sections below — the contract selection, the ticket's own values, and the rules — laid out per
+**§0** below. A subagent worker receives this doctrine inside its brief; an Orca terminal worker (a
+top-level `claude` session with no agent definition) must receive it the same way. Either way the
+brief is self-contained: workers share no memory with the orchestrator or with each other.
+
+## 0. Brief layout — how the orchestrator assembles this
+
+A brief is **two blocks, shared part first**. Never interleaved, never reordered.
+
+```
+──── [A] CAMPAIGN HEADER — byte-identical in every brief of this campaign ────
+  1. this implement-core doctrine
+  2. the campaign orientation digest:
+       - CONTEXT.md / CONTEXT-MAP.md glossary excerpt
+       - the ADR index for the area this campaign touches
+       - repo conventions worth stating once
+       - the exact build / test / typecheck commands
+  3. the IMPLEMENTER REPORT format (§6)
+──── [B] TICKET BLOCK — differs per worker ────
+  - the contract verbatim (§1) and its ticket number
+  - `## File ownership` (`files_owned`) — only when fanned out (§4)
+  - the ticket's `method` (§3)
+```
+
+**`[A]` is frozen for the campaign's lifetime, and carries no per-ticket value.** An issue number, a
+file list, or a tier name that leaks into `[A]` makes it unique per worker, and the shared prefix
+becomes unreachable for everyone. If `[A]` genuinely must change mid-campaign (a new ADR lands),
+that is a *new* header from that point on and one accepted cold miss — say so rather than editing it
+silently.
+
+**Why the order is load-bearing, so a later edit doesn't tidy it away:** prompt caching is a byte
+prefix match from position zero. Identical text placed first is read by every worker at a fraction
+of its price; the same text placed after the ticket contract is unreachable, because each brief has
+already diverged. The digest also exists so N workers don't each re-derive the same test command and
+the same glossary — the orchestrator resolves it once and pastes it unchanged.
 
 ## 1. Which text is the contract
 

@@ -33,7 +33,7 @@ from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
 
-WORKFLOW_VERSION = "3.0.0"  # bump when the kit's architecture/log schema changes
+WORKFLOW_VERSION = "3.1.0"  # bump when the kit's architecture/log schema changes
 # 2.1.0: token-heavy verification (e2e/long-log suite triage) delegated out of the orchestrator
 #        session to a verifier subagent — orchestrator output share drops on e2e-heavy runs.
 # 2.0.0: two-dimension gate (width AND volume V>=5; V<=4 -> direct dispatch, unlogged)
