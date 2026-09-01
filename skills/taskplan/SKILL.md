@@ -145,6 +145,16 @@ or deeper than the spec implied (≥ ~10 tickets, or ≥ 2 independently-shippab
 that's a signal the parent should have been split at `/spec` time, and it's cheaper to split now
 than after half the graph lands.
 
+### Record what this stage cost
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/stats/stats.py record --issue <parent> --stage taskplan
+```
+
+**Do this before the session is cleared.** Stage attribution cannot be reconstructed from
+transcripts afterwards, so a stage that skips this is unrecoverable and `/cleanup`'s pipeline
+rollup will report it as `MISSING`. Re-running it is harmless — the row is replaced, not appended.
+
 ## Rules
 
 - **Independence is discovered, not forced** — only omit an edge where slices are genuinely

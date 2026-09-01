@@ -341,7 +341,16 @@ When every child has landed:
    # transcripts live outside this session; the auto-scan would report misleading buckets).
    ```
 
-6. **Report**: the walk table (ticket → tier → verdict → commit), the PR link, and campaign state.
+6. **Record the stage cost** — the pipeline-level counterpart to the run log above:
+
+   ```bash
+   python3 ${CLAUDE_PLUGIN_ROOT}/skills/stats/stats.py record --issue <parent> --stage implement
+   ```
+
+   Do it before the session is cleared; stage attribution cannot be recovered afterwards. Re-running
+   is harmless (the row is replaced). This is what lets `/cleanup` show what the whole feature cost.
+
+7. **Report**: the walk table (ticket → tier → verdict → commit), the PR link, and campaign state.
 
 ## Rules
 

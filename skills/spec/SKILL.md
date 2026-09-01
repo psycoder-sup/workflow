@@ -144,7 +144,19 @@ gh issue create --title "<feature title>" --body-file <draft> --label spec \
 The `spec` label is the queryable identity ("all open specs"). Do NOT add the agent-ready label — a
 spec is not a ticket, and nothing may ever dispatch it as one.
 
-### 7. Report + hand off
+### 7. Record what this stage cost
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/stats/stats.py record --issue <parent> --stage spec
+```
+
+**Do this before the session is cleared.** Stage attribution cannot be reconstructed from
+transcripts afterwards, so a stage that skips this is unrecoverable and `/cleanup`'s pipeline
+rollup will report it as `MISSING`. Re-running it is harmless — the row is replaced, not appended.
+
+(One `record` per sibling parent when `/spec` split the work — each parent gets its own pipeline.)
+
+### 8. Report + hand off
 
 Print the issue URL(s), the ADRs/glossary terms written during the session, and the next step:
 **`/taskplan <parent>`** (per sibling, respecting their ordering).

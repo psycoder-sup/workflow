@@ -13,7 +13,12 @@ Claude Code plugin: one GitHub-issue-native delivery pipeline.
      │                file-disjoint, serial when a chain; one fresh worker per ticket (subagents, or
      │                --orca for Orca terminals); lands `Ticket: #<n>` commits; workers follow implement-core
 /cleanup              PR (adopts /implement's) → poll CI → merge on green → close the parent → teardown
+     │                → /stats rollup: what the whole feature cost, stage by stage
 ```
+
+Every stage records its own token cost (`/stats`), keyed by the parent issue — stage attribution
+can't be recovered from transcripts afterwards, so each stage logs one row at its end and
+`/cleanup` prints the pipeline breakdown by default.
 
 Inbound raw bugs/ideas enter through **`/triage`** (verify → categorise → grill if murky → agent
 brief → `ready-for-agent`), then `/implement <n>` picks them up as standalone builds.
@@ -37,7 +42,8 @@ Label vocabulary and issue/ADR conventions follow
 | `/implement` | build | Orchestrate the graph: claim all children, walk in dependency order, fan out file-disjoint unblocked tickets, verify + land each as a `Ticket: #<n>` commit, one PR closing every child. `--orca` swaps subagent workers for Orca terminal sessions. Logs every run (`orchlog.py`). |
 | `implement-core` | doctrine | The per-ticket worker contract all `/implement` briefs are built from (brief layout, contract selection, CONTEXT/ADR discipline, method, self-verify, IMPLEMENTER REPORT). §0 fixes the two-block brief layout — a frozen campaign header shared byte-identically across every worker, then the ticket block. Never invoked directly. |
 | `/triage` | inbound | State machine for raw issues/PRs: verify the claim, grill if needed, write agent briefs, maintain `.out-of-scope/`. |
-| `/cleanup` | ship | Adopt/open the PR, poll CI to conclusive (`pollci.py`), auto-merge on green, close the parent when `completed == total`, tear down the worktree. |
+| `/cleanup` | ship | Adopt/open the PR, poll CI to conclusive (`pollci.py`), auto-merge on green, close the parent when `completed == total`, tear down the worktree. Ends with the `/stats` pipeline rollup. |
+| `/stats` | measure | Per-stage token accounting keyed by parent issue (`stats.py`): the four billed buckets, cache hit rate, estimated cost, and each stage's share of the pipeline. Each stage records one row at its end; `/cleanup` rolls them up. Names missing stages instead of under-reporting. |
 | `grilling` | engine | Relentless design-tree interview in frontier rounds. Used by `/spec` and `/triage`; also directly for ad-hoc stress-testing. |
 | `domain-modeling` | engine | Glossary (`CONTEXT.md`) + minimal ADRs (`docs/adr/`), maintained inline as decisions crystallize. |
 
@@ -46,6 +52,7 @@ Label vocabulary and issue/ADR conventions follow
 Two independent version numbers, on purpose:
 
 - **`.claude-plugin/plugin.json` `version`** — the plugin's semver (what `/plugin` installs and updates).
+- **`STATS_VERSION` in `skills/stats/stats.py`** — the stage-log schema version.
 - **`WORKFLOW_VERSION` in `skills/implement/orchlog.py`** — the run-log schema version, stamped into
   every `orchlog` record. It bumps when the orchestration doctrine or log semantics change, so runs
   stay comparable across plugin releases (only compare metrics within the same schema version).

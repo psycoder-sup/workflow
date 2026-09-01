@@ -141,6 +141,31 @@ The merge auto-closed the children named in the `Closes #<n>` lines. Now reconci
 - A standalone issue (no parent) → nothing to reconcile; the `Closes` line was the whole
   bookkeeping.
 
+### 6. Record this stage, then report what the whole feature cost
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/stats/stats.py record --issue <parent> --stage cleanup
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/stats/stats.py report --issue <parent>
+```
+
+**This runs by default** — it is the last thing `/cleanup` does, and its output goes into the
+shipping report alongside the PR link. The rollup is the only place the pipeline's full cost is
+visible: `/spec`, `/taskplan` and `/implement` each wrote their own row, and this stage closes the
+set.
+
+Read the output before pasting it:
+
+- **`MISSING: <stages>`** → an upstream stage never recorded (its session was cleared first). Say so
+  explicitly and call the total a **floor**, not the cost. Never estimate the gap — stage
+  attribution cannot be reconstructed after the fact.
+- **`est $` figures are estimates.** The per-message model isn't recorded, so each agent type is
+  priced at an assumed tier. Quote them as estimates or quote tokens instead.
+- A stage share that looks wrong (a `cleanup` rivalling `implement`, say) is worth naming in the
+  report — that is the signal `/stats` exists to surface.
+
+On a standalone issue with no `/spec` or `/taskplan` behind it, `MISSING` for those two is expected,
+not a defect — say which shape this run was.
+
 ## Constraints & lessons (from real runs)
 
 - **Everything lands via the PR — no direct push to `main`.**
