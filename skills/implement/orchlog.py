@@ -33,7 +33,12 @@ from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
 
-WORKFLOW_VERSION = "3.1.0"  # bump when the kit's architecture/log schema changes
+WORKFLOW_VERSION = "3.2.0"  # bump when the kit's architecture/log schema changes
+# 3.2.0: token scan splits billed usage into output/input/cache_write/cache_read (a single `total`
+#        could not say whether caching worked); haiku retired from the routing table (12.5% rework
+#        vs sonnet's 3.2% over 24 agents). Cache-split fields exist only from this version on.
+# 3.1.0: brief layout fixed at implement-core §0 — a frozen, byte-identical campaign header shared
+#        across every worker, orientation digest resolved once by the orchestrator.
 # 2.1.0: token-heavy verification (e2e/long-log suite triage) delegated out of the orchestrator
 #        session to a verifier subagent — orchestrator output share drops on e2e-heavy runs.
 # 2.0.0: two-dimension gate (width AND volume V>=5; V<=4 -> direct dispatch, unlogged)
@@ -137,8 +142,19 @@ def parse_ts(s):
         return None
 
 
+# The four billed buckets, kept separate because they price very differently:
+# cache_read ~0.1x base input, cache_creation 1.25x (5m TTL) / 2x (1h), input 1x, output 5x.
+# A run's `total` is dominated by cache_read, so a single `total` says nothing about whether
+# caching is working — only the split does. See the COST block in `report`.
+USAGE_FIELDS = ("output", "input", "cache_creation", "cache_read")
+
+
+def _empty_usage():
+    return dict.fromkeys(USAGE_FIELDS, 0)
+
+
 def _sum_usage_file(path, since_dt, until_dt=None):
-    out = tot = 0
+    acc = _empty_usage()
     for line in _read_lines(path):
         line = line.strip()
         if not line:
@@ -157,13 +173,11 @@ def _sum_usage_file(path, since_dt, until_dt=None):
         u = m.get("usage") if isinstance(m, dict) else None
         if not u:
             continue
-        ot = u.get("output_tokens", 0) or 0
-        out += ot
-        tot += ((u.get("input_tokens", 0) or 0)
-                + (u.get("cache_creation_input_tokens", 0) or 0)
-                + (u.get("cache_read_input_tokens", 0) or 0)
-                + ot)
-    return out, tot
+        acc["output"] += u.get("output_tokens", 0) or 0
+        acc["input"] += u.get("input_tokens", 0) or 0
+        acc["cache_creation"] += u.get("cache_creation_input_tokens", 0) or 0
+        acc["cache_read"] += u.get("cache_read_input_tokens", 0) or 0
+    return acc
 
 
 def _meta_agent_type(path):
@@ -239,30 +253,30 @@ def compute_tokens(session, since=None, until=None):
     """
     since_dt = parse_ts(since) if since else None
     until_dt = parse_ts(until) if until else None
-    by = {}  # type -> [output, total, n]
+    by = {}  # type -> usage dict + n
     mains, subs = find_transcript_files(session)
+
+    def add(kind, f):
+        acc = _sum_usage_file(f, since_dt, until_dt)
+        if not any(acc.values()):
+            return
+        r = by.setdefault(kind, dict(_empty_usage(), n=0))
+        for k in USAGE_FIELDS:
+            r[k] += acc[k]
+        r["n"] += 1
+
     for f in subs:
-        o, t = _sum_usage_file(f, since_dt, until_dt)
-        if not (o or t):
-            continue
-        r = by.setdefault(_agent_type_of(f), [0, 0, 0])
-        r[0] += o
-        r[1] += t
-        r[2] += 1
+        add(_agent_type_of(f), f)
     for f in mains:
-        o, t = _sum_usage_file(f, since_dt, until_dt)
-        if not (o or t):
-            continue
-        r = by.setdefault("orchestrator", [0, 0, 0])
-        r[0] += o
-        r[1] += t
-        r[2] += 1
-    return {
-        "session": session,
-        "output": sum(v[0] for v in by.values()),
-        "total": sum(v[1] for v in by.values()),
-        "by_type": {k: {"output": v[0], "total": v[1], "n": v[2]} for k, v in by.items()},
-    }
+        add("orchestrator", f)
+
+    for r in by.values():
+        r["total"] = sum(r[k] for k in USAGE_FIELDS)
+    out = {"session": session, "by_type": by}
+    for k in USAGE_FIELDS:
+        out[k] = sum(r[k] for r in by.values())
+    out["total"] = sum(r["total"] for r in by.values())
+    return out
 
 
 def _tokens_from_args(a):
@@ -295,7 +309,7 @@ def cmd_record(a):
             "had_blockers": a.blockers,
             "boundary_stop": a.boundary_stop,
             "isolation": a.isolation,
-            "model": a.model,  # tier ORCH routed this task to (opus|sonnet|haiku); model-fit signal
+            "model": a.model,  # tier ORCH routed this task to (opus|sonnet); model-fit signal
             # rework = re-delegated because the implementer's own work failed self-verify
             # (a quality signal); review_fix = delegated a review finding (healthy, expected).
             # --redelegated is a deprecated alias that folds into rework.
@@ -332,6 +346,9 @@ def cmd_record(a):
             if tk:
                 rec["tokens_output"] = tk["output"]
                 rec["tokens_total"] = tk["total"]
+                rec["tokens_input"] = tk["input"]
+                rec["tokens_cache_creation"] = tk["cache_creation"]
+                rec["tokens_cache_read"] = tk["cache_read"]
                 rec["tokens_by_type"] = tk["by_type"]
             else:
                 rec["tokens_output"] = None  # session not found; recorded as missing
@@ -350,6 +367,29 @@ def cmd_record(a):
 
 
 # ---- tokens ----------------------------------------------------------------
+def _cache_hit(d):
+    """Cache-read share of all billed *input* (input + cache_write + cache_read), or None.
+
+    Output is excluded: it is never served from cache, so folding it in dilutes the signal.
+    None means the record predates the split (only `output`/`total` were stored).
+    """
+    read = d.get("cache_read")
+    if read is None:
+        return None
+    billed_in = (d.get("input", 0) or 0) + (d.get("cache_creation", 0) or 0) + read
+    return (read / billed_in) if billed_in else None
+
+
+def _hit_pct(d):
+    h = _cache_hit(d)
+    return "  n/a" if h is None else f"{100 * h:4.1f}%"
+
+
+def _hit_rate(d):
+    h = _cache_hit(d)
+    return "cache split unavailable" if h is None else f"cache hit {100 * h:.1f}% of billed input"
+
+
 def cmd_tokens(a):
     tk = _tokens_from_args(a)
     if not tk:
@@ -359,9 +399,15 @@ def cmd_tokens(a):
         print(json.dumps(tk))
         return
     print(f"=== tokens ===  session={tk['session']}")
-    print(f"output: {tk['output']:,}   total: {tk['total']:,}   (cache_read usually dominates total)")
-    for k, v in sorted(tk["by_type"].items(), key=lambda kv: -kv[1]["output"]):
-        print(f"  {k:18} output={v['output']:>10,}  total={v['total']:>13,}  agents={v['n']}")
+    print(f"total: {tk['total']:,}")
+    print(f"  output={tk['output']:,}  input={tk['input']:,}  "
+          f"cache_write={tk['cache_creation']:,}  cache_read={tk['cache_read']:,}"
+          f"   ({_hit_rate(tk)})")
+    print(f"  {'type':18} {'total':>13} {'output':>10} {'input':>11} {'c_write':>11} {'c_read':>13}  hit   n")
+    for k, v in sorted(tk["by_type"].items(), key=lambda kv: -kv[1]["total"]):
+        print(f"  {k:18} {v['total']:>13,} {v['output']:>10,} {v.get('input', 0):>11,} "
+              f"{v.get('cache_creation', 0):>11,} {v.get('cache_read', 0):>13,}  "
+              f"{_hit_pct(v):>5}  {v['n']}")
 
 
 # ---- report ----------------------------------------------------------------
@@ -550,15 +596,37 @@ def cmd_report(a):
     if trun:
         bt_out = defaultdict(int)
         bt_n = defaultdict(int)
+        bt = defaultdict(lambda: defaultdict(int))  # type -> bucket -> tokens (split-era only)
         for r in trun:
             for k, v in (r.get("tokens_by_type") or {}).items():
                 bt_out[k] += v.get("output", 0)
                 bt_n[k] += v.get("n", 0)
+                if v.get("cache_read") is not None:
+                    for f in USAGE_FIELDS:
+                        bt[k][f] += v.get(f, 0)
         nrun = len(trun)
         print("COST (tokens)")
         print(f"  avg output/run: {sum(r['tokens_output'] for r in trun) // nrun:,}")
         print(f"  avg total/run:  {sum(r.get('tokens_total', 0) for r in trun) // nrun:,}   (cache_read dominates total)")
         print("  output by type: " + ", ".join(f"{k}={v:,}" for k, v in sorted(bt_out.items(), key=lambda kv: -kv[1])))
+
+        # --- cache split: the only view that says whether caching is working ---
+        split = [r for r in trun if r.get("tokens_cache_read") is not None]
+        if split:
+            agg = {f: sum(r.get("tokens_" + ("cache_creation" if f == "cache_creation" else f), 0)
+                          for r in split) for f in USAGE_FIELDS}
+            ns = len(split)
+            print(f"  cache split ({ns}/{len(trun)} run(s) carry it):")
+            print(f"    avg/run  input={agg['input'] // ns:,}  cache_write={agg['cache_creation'] // ns:,}"
+                  f"  cache_read={agg['cache_read'] // ns:,}")
+            print(f"    {_hit_rate(agg)}   <- low = workers re-reading a prefix that should be shared;"
+                  f" see implement-core §0")
+            if bt:
+                print("    by type: " + ", ".join(
+                    f"{k} {_hit_pct(v).strip()}" for k, v in sorted(bt.items(), key=lambda kv: -kv[1]["total"] if "total" in kv[1] else -sum(kv[1].values()))))
+        else:
+            print("  cache split: not recorded on any run in this window"
+                  "  <- pre-3.2.0 records store only output/total; re-run to capture it")
         impl_out, impl_n = bt_out.get("code-implementer", 0), bt_n.get("code-implementer", 0)
         rework = sum(1 for r in agents if _is_rework(r))
         if impl_n and rework:
@@ -602,6 +670,8 @@ def main():
     r.add_argument("--blockers", action="store_true", help="had blockers")
     r.add_argument("--boundary-stop", action="store_true", dest="boundary_stop")
     r.add_argument("--isolation", choices=["tree", "worktree"], default="tree")
+    # haiku/fable stay accepted so historical and hand-corrected records still parse; the routing
+    # table in /implement is sonnet|opus only as of 3.2.0.
     r.add_argument("--model", choices=["fable", "opus", "sonnet", "haiku"], default=None,
                    help="model tier this implementer ran on (feeds the model-fit signal in report)")
     r.add_argument("--rework", action="store_true",

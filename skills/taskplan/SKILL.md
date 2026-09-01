@@ -75,9 +75,11 @@ batch), and a *contract* ticket (delete the old form, blocked by every migrate b
   `/implement` judge file-disjoint fan-out. Include the ticket's own test files. **Hotspot files**
   (routers, DI containers, barrel `index.*`, schema/migrations, lockfiles, shared types) must never
   appear in two unordered tickets — serialize them with an edge or single-owner the file.
-- **`model`** — cheapest tier whose intelligence *and* taste clear the ticket's bar: `haiku`
-  (mechanical, fully specified — rare for a vertical slice), `sonnet` (standard pattern-following —
-  the default), `opus` (subtle correctness or real design judgment — justify each). Never `fable`.
+- **`model`** — cheapest tier whose intelligence *and* taste clear the ticket's bar: `sonnet`
+  (standard pattern-following — the default) or `opus` (subtle correctness or real design judgment —
+  justify each). Those are the only two. Never `fable`, and **never `haiku`** — it reworked at 12.5%
+  against sonnet's 3.2% across 24 logged agents, so a ticket mechanical enough to tempt you still
+  goes to `sonnet`.
 - **`method`** — `tdd` (test-first at the spec's named seams; the default), `source-driven` (every
   external API grounded in official docs), `incremental` (thinnest slice, flags for risky paths).
   Methods compose; see `implement-core` for the worker-side definitions.

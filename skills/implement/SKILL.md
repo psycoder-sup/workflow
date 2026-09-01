@@ -189,16 +189,19 @@ reason). Pass it explicitly on every dispatch:
 |---|---|
 | `opus` | subtle correctness, invariants that must survive, security predicates, a design fork the spec left open — justify each in one clause |
 | `sonnet` | standard, well-specified, pattern-following — **the workhorse default** |
-| `haiku` | mechanical and fully specified: renames, config, boilerplate — rare for a vertical slice |
 
-**Fable is not available for delegation — Opus is the ceiling.** Escalate one tier on rework: a
-cheap worker that failed self-verify signals the bar was higher than judged.
+**These two tiers are the whole table.** Fable is not available for delegation, and **`haiku` is
+retired for ticket work** — across 24 logged haiku agents it reworked at 12.5% against sonnet's
+3.2%, so its saving was routinely spent twice over. A ticket that looks mechanical enough for haiku
+goes to sonnet. (`/taskplan` may still emit `"model": "haiku"` on older tickets — read it as
+`sonnet`.) With only two tiers, **escalation on rework means opus**: a sonnet worker that failed its
+own self-verify signals the bar was higher than judged.
 
-**Tier affinity within a wave (advisory).** Caches are model-scoped, so a wave mixing haiku, sonnet
-and opus shares nothing across its workers. On a *genuine* toss-up between two tiers, prefer the
-wave's dominant tier — a "cheap" ticket routed haiku-alone can cost more than the same ticket routed
-sonnet alongside two other sonnets. This never justifies under-routing a ticket that needs the
-higher tier; correctness outranks the cache.
+**Tier affinity within a wave (advisory).** Caches are model-scoped, so a wave split between sonnet
+and opus shares no prefix across the split. On a *genuine* toss-up, prefer the wave's dominant tier —
+a lone opus worker in an otherwise-sonnet wave pays full price for a prefix its neighbours are
+reading at a tenth. This never justifies under-routing a ticket that needs opus; correctness
+outranks the cache.
 
 ### The brief
 
