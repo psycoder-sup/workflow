@@ -54,8 +54,11 @@ Break the work into **tracer-bullet tickets**:
 - Each slice cuts a narrow but COMPLETE path through every layer it touches (schema, API, UI,
   tests) — vertical, NOT a horizontal slice of one layer.
 - A completed slice is demoable or verifiable on its own.
-- Each slice is sized to fit one fresh context window (roughly ≤ ~150 lines of change; bigger →
-  split, trivially tiny → merge into a neighbor).
+- Prefer fewer, larger tickets. Size a slice to what one worker can hold, not to a line count. A
+  chain of dependent tickets that all touch the same hotspot file is ONE ticket, not N: every extra
+  worker in a chain re-reads the code, re-edits the shared registries and re-runs the suite, and none
+  of it overlaps — measured at 2.9× the wall-clock and 2× the cost of one worker on a 7-ticket chain.
+  Split only where the halves are genuinely file-disjoint and can run at the same time.
 - Prefactoring first.
 
 Give each ticket its **blocking edges** — the tickets that must land before it can start. No
@@ -75,11 +78,11 @@ batch), and a *contract* ticket (delete the old form, blocked by every migrate b
   `/implement` judge file-disjoint fan-out. Include the ticket's own test files. **Hotspot files**
   (routers, DI containers, barrel `index.*`, schema/migrations, lockfiles, shared types) must never
   appear in two unordered tickets — serialize them with an edge or single-owner the file.
-- **`model`** — cheapest tier whose intelligence *and* taste clear the ticket's bar: `sonnet`
-  (standard pattern-following — the default) or `opus` (subtle correctness or real design judgment —
-  justify each). Those are the only two. Never `fable`, and **never `haiku`** — it reworked at 12.5%
-  against sonnet's 3.2% across 24 logged agents, so a ticket mechanical enough to tempt you still
-  goes to `sonnet`.
+- **`model`** — `opus` is the default. `sonnet` only for a ticket that touches no hotspot file and
+  follows an existing pattern exactly — justify it in one clause. Those are the only two. Never
+  `fable`, and **never `haiku`** (12.5% rework against sonnet's 3.2% across 24 logged agents). Sonnet
+  took ~2.7× the turns of opus on shared-file tickets — the same money and 1.6× the wall-clock — so
+  the cheaper tier only pays where the work is genuinely pattern-following.
 - **`method`** — `tdd` (test-first at the spec's named seams; the default), `source-driven` (every
   external API grounded in official docs), `incremental` (thinnest slice, flags for risky paths).
   Methods compose; see `implement-core` for the worker-side definitions.
@@ -87,7 +90,16 @@ batch), and a *contract* ticket (delete the old form, blocked by every migrate b
 ### 4. Quiz the user — the gate before publishing
 
 Present the breakdown as a numbered list. Per ticket: **Title**, **Blocked by**, **What it
-delivers**, **tier**. Then ask:
+delivers**, **tier**. Above the list, print the **build-mode verdict** derived from the edges and
+`files_owned`:
+
+```
+N tickets · max wave width W · H of N touch a shared hotspot → chain (one worker) | fan-out
+```
+
+`chain` when fewer than half the tickets can run in a wave of width ≥ 2. A `chain` verdict is the
+moment to coarsen (merge the chained tickets), not a failure — but the user sees it before anything
+is published. Then ask:
 
 - Does the granularity feel right? (too coarse / too fine)
 - Are the blocking edges correct — does each ticket only depend on what genuinely gates it?
@@ -126,7 +138,7 @@ layer-by-layer implementation.
 
 - #<m> — <why it gates this>, or "None — can start immediately".
 
-<!-- taskplan: {"files_owned": ["src/foo/**", "tests/foo/**"], "model": "sonnet", "method": "tdd"} -->
+<!-- taskplan: {"files_owned": ["src/foo/**", "tests/foo/**"], "model": "opus", "method": "tdd"} -->
 ```
 
 The visible body stays durable — behaviour and criteria, **no file paths, no code snippets** (they
@@ -139,7 +151,8 @@ The machine contract lives in the HTML comment, invisible to humans and advisory
 ### 6. Report + hand off
 
 Print: the published graph (number → title → blocked-by → tier), the wave structure it implies
-(which tickets are simultaneously unblocked and file-disjoint), and the next step:
+(which tickets are simultaneously unblocked and file-disjoint), the build-mode verdict (`chain` or
+`fan-out` — `/implement` derives the same answer), and the next step:
 **`/implement <parent>`** (add `--orca` for visible terminal workers). If the graph came out wider
 or deeper than the spec implied (≥ ~10 tickets, or ≥ 2 independently-shippable clusters), say so —
 that's a signal the parent should have been split at `/spec` time, and it's cheaper to split now
@@ -163,7 +176,7 @@ rollup will report it as `MISSING`. Re-running it is harmless — the row is rep
 - **Vocabulary from `CONTEXT.md`, boundaries from `docs/adr/`** — a ticket that contradicts an ADR
   must say so explicitly, not silently override it.
 - **Approval before publication, always.**
-- **Right-size the model** — everything-on-opus means the routing wasn't done.
+- **Opus by default** — a `sonnet` ticket needs its one-clause justification.
 - **Don't implement here** — the code belongs to `/implement`'s workers.
 
 ## Red flags
@@ -171,5 +184,7 @@ rollup will report it as `MISSING`. Re-running it is harmless — the row is rep
 - A ticket has no acceptance criteria, or "make it work" as its only one → not ready.
 - Two unordered tickets list the same file in `files_owned` → missing edge or wrong ownership.
 - A hotspot file in two unordered tickets → serialize or single-owner it.
-- The graph is one long chain of 10+ tiny tickets → slices too thin; merge neighbors.
+- The graph is a chain of 4+ tickets → slices too thin; merge neighbors.
+- ≥ half the tickets share a hotspot file → they are one ticket. Merge them, or accept that
+  `/implement` will walk them in chain mode with one worker.
 - You're writing a plan file → wrong era; the graph is the plan.

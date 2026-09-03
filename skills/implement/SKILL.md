@@ -2,11 +2,11 @@
 name: implement
 description: >
   Build a parent issue's sub-issue graph as an orchestrator: 1 parent = 1 worktree = 1 integration
-  branch = 1 PR. Walks the dependency-linked sub-issues in graph order — parallel waves when
-  unblocked tickets are file-disjoint, serial when the graph is a chain — dispatching one fresh
-  worker per ticket (built-in code-implementer subagents by default; --orca for Orca-terminal
-  workers), verifying and landing each slice as a `Ticket: #<n>` commit, then shipping one PR that
-  closes every child. Workers follow the implement-core doctrine; the orchestrator NEVER writes
+  branch = 1 PR. Walks the dependency-linked sub-issues in graph order — one worker for the whole
+  graph when it is a chain (chain mode), one fresh worker per ticket in parallel waves when tickets
+  are file-disjoint (fan-out mode); built-in code-implementer subagents by default, --orca for
+  Orca-terminal workers — verifying and landing each slice as a `Ticket: #<n>` commit, then shipping
+  one PR that closes every child. Workers follow the implement-core doctrine; the orchestrator NEVER writes
   implementation code. Also takes a single triaged issue (no sub-issues) as a one-worker build.
   Use after /taskplan has published the sub-issues.
 trigger: /implement
@@ -18,8 +18,9 @@ allowed-tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "Agent", "AskUs
 # /implement
 
 Build a parent issue end-to-end as an **orchestrator**: read the live sub-issue graph from GitHub,
-dispatch one fresh worker per ticket, verify and land each slice as a commit on ONE integration
-branch, and finish with ONE PR that closes every child. **You never write the implementation
+dispatch one worker for the whole graph when it is a chain or one fresh worker per ticket when it
+is wide, verify and land each slice as a commit on ONE integration branch, and finish with ONE PR
+that closes every child. **You never write the implementation
 yourself.**
 
 This is the build stage of the pipeline: `/spec` published the parent issue (the spec), `/taskplan`
@@ -116,7 +117,8 @@ Continue from the first unlanded ticket. All campaign state is derivable — the
 branch, the trailers name the landed tickets, GitHub names the graph. No session-local state exists,
 so a died session costs nothing but the restart.
 
-**On `--dry-run`:** print the walk order, wave structure, and tier routing (Step 3), then stop.
+**On `--dry-run`:** print the mode (chain or fan-out), walk order, wave structure, and tier routing
+(Step 3), then stop.
 Claim nothing, comment nothing, dispatch nothing.
 
 ## Step 2 — Claim the set, announce the campaign
@@ -138,8 +140,10 @@ gh issue comment <parent> --body "🛠️ /implement is working this parent on b
 
 Assemble block `[A]` of [`implement-core` §0](../implement-core/SKILL.md) now, before any dispatch:
 the doctrine, the orientation digest (CONTEXT.md/CONTEXT-MAP.md glossary excerpt, the ADR index for
-the area this parent touches, repo conventions, and the **exact** build / test / typecheck commands
-resolved from CI config or package scripts), and the IMPLEMENTER REPORT format.
+the area this parent touches, repo conventions, the **exact** build / test / typecheck commands
+resolved from CI config or package scripts, and **`## Parent constraints`** — the parent issue's
+`Implementation Decisions` and `Testing Decisions` sections pasted verbatim), and the IMPLEMENTER
+REPORT format.
 
 Resolve those commands **here, not per worker** — every worker that has to rediscover the test
 command spends its own context on a fact you already know. Then **freeze it**: paste the same bytes
@@ -159,22 +163,29 @@ the ledger, the trailers are the entries.
 Each `/taskplan` sub-issue body carries an advisory block:
 
 ```
-<!-- taskplan: {"files_owned": [...], "model": "sonnet", "method": "tdd"} -->
+<!-- taskplan: {"files_owned": [...], "model": "opus", "method": "tdd"} -->
 ```
 
 Parse it for the file boundary, tier, and method. **Missing block** (hand-written or triaged ticket)
 → judge all three at dispatch time yourself; say you did.
 
-### Serial vs parallel — the graph decides
+### Chain or fan-out — the graph decides, once, up front
 
-- **One ticket unblocked** → dispatch it alone. Serial stretches are normal and correct: the unit is
-  a vertical slice sized to one context window, and what a fresh worker per slice buys is context
-  quality, not parallelism.
-- **Two or more tickets simultaneously unblocked** → fan out **only if their `files_owned` are
-  disjoint** (from metadata, or judged from the briefs). Dispatch the wave in a single message, one
-  worker each. After the wave verifies, land each ticket as its own commit in ranked order.
-- **Overlapping or unknowable ownership** → serialize, ranked by `blocking` count descending
-  (finishing the ticket that unblocks the most comes first), tie-break on issue number.
+Compute the waves from `blockedBy` + `files_owned` before dispatching anything, then pick the mode
+for the whole campaign:
+
+- **Chain mode** — fewer than half the tickets can run in a wave of width ≥ 2. Dispatch **one
+  worker for the whole graph**: header `[A]` as usual, ticket block `[B]` holding every contract in
+  walk order. Landing duty is transferred — the worker commits each ticket as it finishes with the
+  `Ticket: #<n>` trailer (implement-core §5), so resume still works. You verify once, at the end. A
+  fresh worker per chained ticket re-reads the code, re-edits the same registries and re-runs the
+  suite with nothing overlapping — measured at 2.9× the wall-clock, 2× the cost and 3× the diff of
+  one worker on a 7-ticket chain. The frozen header keeps the *prefix* cheap; it cannot give back
+  the turns.
+- **Fan-out mode** — the graph is genuinely wide. One fresh worker per ticket. Dispatch each wave in
+  a single message, one worker each, **only where `files_owned` are disjoint**; after the wave
+  verifies, land each ticket as its own commit in ranked order. Overlapping or unknowable ownership
+  within a wave → serialize, ranked by `blocking` count descending, tie-break on issue number.
 - **Hotspot files** (routers, DI containers, barrel `index.*`, schema/migrations, lockfiles, shared
   types) are conflict magnets — never in two same-wave boundaries.
 - **Never use `isolation: worktree` agents for tickets.** An isolated agent branches from
@@ -187,9 +198,11 @@ reason). Pass it explicitly on every dispatch:
 
 | Tier | Route here when… |
 |---|---|
-| `opus` | subtle correctness, invariants that must survive, security predicates, a design fork the spec left open — justify each in one clause |
-| `sonnet` | standard, well-specified, pattern-following — **the workhorse default** |
+| `opus` | **the default** — and always in chain mode, where one worker carries the whole graph |
+| `sonnet` | a ticket that touches no hotspot file and follows an existing pattern exactly — one-clause justification |
 
+Sonnet took ~2.7× the turns of opus on shared-file tickets (#103 vs #104 in the measured campaign:
+120 vs 367 turns, 16 vs 25 min, $12 vs $20) — the unit-price saving cancels and the clock loses.
 **These two tiers are the whole table.** Fable is not available for delegation, and **`haiku` is
 retired for ticket work** — across 24 logged haiku agents it reworked at 12.5% against sonnet's
 3.2%, so its saving was routinely spent twice over. A ticket that looks mechanical enough for haiku
@@ -208,7 +221,10 @@ outranks the cache.
 Lay every brief out per [`implement-core` §0](../implement-core/SKILL.md): the **frozen campaign
 header from Step 2, pasted unchanged**, then the **ticket block** — the **contract verbatim** (§1's
 table decides body vs agent-brief comment — fetch with `--comments`), the ticket's **method**, and
-the **file boundary** (only when fanned out; in a serial stretch the branch is the boundary).
+the **file boundary** (only when fanned out; in a serial stretch the branch is the boundary), and —
+fan-out mode, second wave on — **`## Landed so far`**: the `summary` and `files_changed` lines of
+every previous IMPLEMENTER REPORT, so a fresh worker inherits the conventions its siblings just set
+instead of re-reading the registries to infer them.
 
 Everything shared lives in the header and is written once; everything per-ticket lives after it.
 Never restate a header fact inside the ticket block, and never let a ticket number, file list or
@@ -257,7 +273,12 @@ so the next ticket starts on a fresh session exactly as the one-fresh-worker-per
 requires. Be clear-eyed about what that buys — `/clear` discards the session's cache too, so terminal
 reuse saves process startup, not tokens. Spawning a new terminal instead is equally correct.
 
-## Step 5 — Integrate, verify, land — per ticket
+## Step 5 — Integrate, verify, land
+
+**Chain mode:** the worker's per-ticket gate stands. Read its final report, confirm one
+`Ticket: #<n>` commit per ticket exists, run the full build + test suite once on the integrated
+branch, push, log one agent record. Red → re-dispatch the fix to a fresh `opus` worker. The
+per-ticket loop below is fan-out mode.
 
 1. **Read the IMPLEMENTER REPORT** (`verdict`, `build`, `tests`, `blockers`). A `blockers` entry
    naming a cross-boundary need means the partition was off — reassign ownership or serialize;
@@ -359,14 +380,14 @@ When every child has landed:
 - **Claim all children up-front; announce on the parent.** The assignee set is the campaign lock.
 - **The campaign header is built once and frozen.** Byte-identical in every brief, both transports;
   no ticket number, file list or tier name in it.
-- **One fresh worker per ticket.** Never feed two tickets to one worker; never let a worker
-  "continue" into the next ticket. The only continuation allowed is a same-tier rework of the slice
+- **Fan-out: one fresh worker per ticket. Chain: one worker, the whole graph, in walk order.**
+  Never mix — a fan-out worker never "continues" into the next ticket. The only continuation allowed is a same-tier rework of the slice
   that worker just built (Step 5.3) — still one worker, still one ticket.
 - **Landed = trailer on the pushed branch. Closed = merged to main.** Never close a child by hand.
 - **Fan out only on disjoint files, same tree.** Overlap → serialize. Isolated-worktree agents are
   banned (wrong base).
-- **Push after every landing.**
-- **Route a tier per ticket; justify each opus; escalate one tier on rework.**
+- **Push after every landing** (chain mode: when the worker returns).
+- **Opus by default; justify each `sonnet`; a sonnet rework goes to opus.**
 - **A STOP holds the walk.** Surface it; don't skip, don't decide the fork yourself.
 - **Anti-freelance, always.** You commit and push; you never write source.
 - **Ask before the PR.** `--dry-run` stops before claiming anything.
@@ -399,12 +420,12 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/implement/orchlog.py report --recent 20
 
 **Quality**: high `boundary_stop` → partitioning wrong; high rework → briefs under-specified or
 `/taskplan` slices too big; high `deviated` → criteria not tight. **Model fit**: rework clustered in
-a cheap tier → route those up; everything on opus → not banking the tier savings. **Cost**: an
+a cheap tier → route those up. **Cost**: an
 orchestrator-dominated run is overhead-heavy — the fix is coarser slices in `/taskplan`, not less
 planning. Slice size is the dominant lever generally: each ticket carries a fixed cost (a cold
 prefix plus its share of orientation) that no amount of dispatch tuning removes, so halving the
 ticket count halves it. Worker reuse is not an alternative — carried context is billed on every
 turn, so a worker that keeps a finished ticket's transcript pays for it repeatedly while getting
-worse at the next one. Serial walks land at `peak_width == 1` **by design** — that is not a gate leak in this
-graph-walking model. Ignore the COST block for `orca-` runs (worker tokens uncaptured). When you
+worse at the next one. A run with `peak_width == 1` and more than one agent record ran a chain in
+fan-out mode — it should have been one worker. Ignore the COST block for `orca-` runs (worker tokens uncaptured). When you
 change this skill or the agent definitions in response, bump `WORKFLOW_VERSION` in `orchlog.py`.

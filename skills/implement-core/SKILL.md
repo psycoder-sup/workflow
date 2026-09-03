@@ -35,12 +35,23 @@ A brief is **two blocks, shared part first**. Never interleaved, never reordered
        - the ADR index for the area this campaign touches
        - repo conventions worth stating once
        - the exact build / test / typecheck commands
+       - `## Parent constraints` — the parent spec's Implementation Decisions and
+         Testing Decisions sections, verbatim
   3. the IMPLEMENTER REPORT format (§6)
 ──── [B] TICKET BLOCK — differs per worker ────
   - the contract verbatim (§1) and its ticket number
+      (chain mode: every ticket's contract, in walk order)
   - `## File ownership` (`files_owned`) — only when fanned out (§4)
+  - `## Landed so far` — fan-out mode, second wave on: the `summary` and
+    `files_changed` lines of every previous IMPLEMENTER REPORT
   - the ticket's `method` (§3)
 ```
+
+`## Parent constraints` is in `[A]` because it is the same for every worker and because a rule that
+lives only in the parent is a rule no worker follows — seven test files a spec had forbidden came out
+of one campaign whose workers each saw only their own ticket. `## Landed so far` is in `[B]` because
+it grows per wave; it exists so a fresh worker does not spend its first hundred reads re-deriving a
+convention a sibling established minutes earlier.
 
 **`[A]` is frozen for the campaign's lifetime, and carries no per-ticket value.** An issue number, a
 file list, or a tier name that leaks into `[A]` makes it unique per worker, and the shared prefix
@@ -129,7 +140,9 @@ in your report — don't fix it here, even if it's one line.
 - **Stay on the ticket.** No scope expansion; tempting adjacent improvements go under `follow_ups`.
 - **Do not commit, push, branch, or open PRs — you only change the working tree.** The orchestrator
   verifies and lands your work as a commit. (Exception: the orchestrator's brief may explicitly
-  transfer landing duties; only then do git writes belong to you.)
+  transfer landing duties; only then do git writes belong to you.) In **chain mode** the brief does
+  exactly that: commit each ticket as you finish it — `<type>: <ticket title> (#<n>)` with a
+  `Ticket: #<n>` trailer — then move to the next. Still no push, no branch, no PR.
 - **STOP on a real design fork.** If the acceptance criteria leave a genuine design decision open,
   report it as a blocker rather than guessing — a re-dispatch with a ruling beats a reworked wrong
   guess. Deviate silently only on trivia, and record it under `deviations`.

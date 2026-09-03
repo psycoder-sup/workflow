@@ -9,9 +9,10 @@ Claude Code plugin: one GitHub-issue-native delivery pipeline.
      │                too wide for one PR → split into sibling parents with blocked-by edges
 /taskplan <parent>    vertical-slice sub-issues: native --parent + --blocked-by, ready-for-agent by
      │                construction, taskplan metadata block (files_owned / model / method); quiz-gated
-/implement <parent>   1 parent = 1 worktree = 1 branch = 1 PR; walks the live graph — parallel waves when
-     │                file-disjoint, serial when a chain; one fresh worker per ticket (subagents, or
-     │                --orca for Orca terminals); lands `Ticket: #<n>` commits; workers follow implement-core
+/implement <parent>   1 parent = 1 worktree = 1 branch = 1 PR; walks the live graph — one worker for the
+     │                whole graph when it is a chain, one fresh worker per ticket in parallel waves when
+     │                file-disjoint (subagents, or --orca for Orca terminals); opus by default; lands
+     │                `Ticket: #<n>` commits; workers follow implement-core
 /cleanup              PR (adopts /implement's) → poll CI → merge on green → close the parent → teardown
      │                → /stats rollup: what the whole feature cost, stage by stage
 ```

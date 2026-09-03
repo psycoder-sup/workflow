@@ -33,7 +33,10 @@ from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
 
-WORKFLOW_VERSION = "3.2.0"  # bump when the kit's architecture/log schema changes
+WORKFLOW_VERSION = "3.3.0"  # bump when the kit's architecture/log schema changes
+# 3.3.0: chain mode — a graph where fewer than half the tickets can run at width >= 2 gets ONE
+#        worker for the whole walk (measured 2.9x wall-clock / 2x cost / 3x diff for one worker
+#        per chained ticket); opus is the default tier; parent constraints ride in the header.
 # 3.2.0: token scan splits billed usage into output/input/cache_write/cache_read (a single `total`
 #        could not say whether caching worked); haiku retired from the routing table (12.5% rework
 #        vs sonnet's 3.2% over 24 agents). Cache-split fields exist only from this version on.
