@@ -327,7 +327,7 @@ def cmd_record(a):
             "had_blockers": a.blockers,
             "boundary_stop": a.boundary_stop,
             "isolation": a.isolation,
-            # executor: who implemented — the /implement session itself (solo), a code-implementer
+            # executor: who implemented — the /implement session itself (solo), a general-purpose
             # subagent, or an Orca terminal worker. Missing on pre-4.0.0 records (= subagent|orca).
             "executor": a.executor,
             # tickets: how many tickets this one record covers (a chain worker covers the whole
@@ -685,11 +685,15 @@ def cmd_report(a):
         else:
             print("  cache split: not recorded on any run in this window"
                   "  <- pre-3.2.0 records store only output/total; re-run to capture it")
-        impl_out, impl_n = bt_out.get("code-implementer", 0), bt_n.get("code-implementer", 0)
+        # Worker output: pre-2.0 workers were `code-implementer` agents (their own bucket); from 2.0
+        # /implement-orc briefs general-purpose agents, which share a bucket with research agents,
+        # so the estimate is an upper bound there.
+        impl_key = "code-implementer" if bt_out.get("code-implementer") else "general-purpose"
+        impl_out, impl_n = bt_out.get(impl_key, 0), bt_n.get(impl_key, 0)
         rework = sum(1 for r in agents if _is_rework(r))
         if impl_n and rework:
             per = impl_out / impl_n
-            print(f"  ~rework output: {int(per * rework):,}   (est: avg impl output {int(per):,} x {rework} rework agents)  <- tokens spent on rework")
+            print(f"  ~rework output: {int(per * rework):,}   (est: avg {impl_key} output {int(per):,} x {rework} rework agents)  <- tokens spent on rework")
         if len(trun) < len(runs):
             print(f"  (note: {len(runs) - len(trun)} run(s) logged without token data)")
         print()

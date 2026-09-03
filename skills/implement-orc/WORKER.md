@@ -1,7 +1,8 @@
 # WORKER.md — the worker overlay for `/implement-orc`
 
-Read by `/implement-orc` only, when composing worker briefs. A worker is a `code-implementer`
-subagent or an Orca terminal session that implements under an orchestrator. It follows
+Read by `/implement-orc` only, when composing worker briefs. A worker is a `general-purpose`
+subagent or an Orca terminal session that implements under an orchestrator; it has no agent
+definition of its own, so the brief carries everything. It follows
 [`implement-core`](../implement-core/SKILL.md) for *how to build*; this file adds what only a worker
 needs: how its brief is laid out, its file boundary, its git duties, how it stops, and how it
 reports. A brief is self-contained — workers share no memory with the orchestrator or each other.

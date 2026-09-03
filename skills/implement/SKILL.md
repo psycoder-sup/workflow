@@ -53,8 +53,8 @@ context. None of them writes source:
 - **`Explore` subagent** — a broad codebase sweep where you need the conclusion, not the file dumps.
 - **`/code-review`, `/security-review`** — fresh-eyes review of the integrated diff at the end.
 
-Anything that edits source under a different context — `code-implementer`, `general-purpose` with
-Edit, `isolation: worktree` agents — is not part of this skill.
+Anything that edits source under a different context — a `general-purpose` agent with Edit, an
+`isolation: worktree` agent — is not part of this skill.
 
 ## Preconditions
 
@@ -292,7 +292,7 @@ When every child has landed:
 - A ticket's body has no acceptance criteria → it didn't come from `/taskplan` and triage never
   finished it. Refuse it.
 - A child is assigned to someone else → another session holds this parent. Stop.
-- You're about to spawn a `code-implementer` "just for this one ticket" → not this skill. Implement it.
+- You're about to spawn an agent to write "just this one ticket" → not this skill. Implement it.
 - You're verifying a ticket from memory of its criteria instead of re-reading the issue → fetch it.
 - You skipped `/code-review` because "the tests are green" → the tests were written by the same
   context that wrote the code. Run it.

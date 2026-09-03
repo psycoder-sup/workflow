@@ -6,8 +6,9 @@ description: >
   walks the whole graph) or fan-out mode (one fresh worker per ticket in file-disjoint waves) from
   the graph shape, briefs workers per the implement-core doctrine under a frozen campaign header,
   verifies and lands each slice as a `Ticket: #<n>` commit, and ships one PR that closes every
-  child. The orchestrator NEVER writes implementation code. Workers are built-in code-implementer
-  subagents by default; --orca runs each worker as a `claude` session in its own Orca terminal.
+  child. The orchestrator NEVER writes implementation code. Workers are general-purpose subagents
+  briefed with the full doctrine by default; --orca runs each worker as a `claude` session in its
+  own Orca terminal.
   Use ONLY when the user explicitly asks for an orchestrated build — the default build skill is
   /implement (the session implements everything itself).
 trigger: /implement-orc
@@ -31,9 +32,11 @@ either skill can be resumed with either, because all state lives in GitHub and t
 **The shape is fixed: 1 parent = 1 worktree = 1 branch = 1 PR.** Refuse a parent whose own
 `blocked-by` (parent-to-parent) edges are still open — its predecessor hasn't shipped.
 
-**Transport**: workers are built-in `code-implementer` subagents by default. With **`--orca`**, each
-worker is a `claude` CLI session in its own Orca terminal (visible panes, runtime task/dispatch
-provenance) — see Step 4; the doctrine is identical either way.
+**Transport**: workers are `general-purpose` subagents by default. With **`--orca`**, each worker is
+a `claude` CLI session in its own Orca terminal (visible panes, runtime task/dispatch provenance) —
+see Step 4. Neither transport has a worker agent definition: **the brief is the agent definition**,
+which is why W-0 puts implement-core and WORKER.md in full at the top of every brief, both transports
+alike.
 
 ## The roles (keep them separate)
 
@@ -204,7 +207,9 @@ everything; workers share no memory.
 ### Default transport — subagents
 
 Spawn each wave's workers in a single message, one `Agent` call each
-(`subagent_type: "code-implementer"`, explicit `model:` per the routing). Dispatching a wave in one
+(`subagent_type: "general-purpose"`, explicit `model:` per the routing, the brief as the prompt).
+A general-purpose agent knows nothing about tickets until the brief tells it — never send a bare
+contract without header `[A]`. Dispatching a wave in one
 message also keeps its shared header warm across the wave.
 
 ### `--orca` transport — Orca terminal workers
@@ -227,9 +232,8 @@ orca orchestration task-create --spec "<brief>" --json
 orca orchestration dispatch --task <task_id> --to <handle> --inject --json
 ```
 
-Orca workers are top-level claude sessions — the `code-implementer` agent definition does NOT apply,
-so the brief must carry implement-core and WORKER.md inline in full (boundary, STOP-via-`ask` rule,
-report block). It carries the **same campaign header bytes** as a subagent brief; that is how
+Orca workers are top-level claude sessions, so — exactly as for subagents — the brief must carry
+implement-core and WORKER.md inline in full (boundary, STOP-via-`ask` rule, report block). It carries the **same campaign header bytes** as a subagent brief; that is how
 `--orca` gets the same shared prefix. The tier lives in the argv, so **escalation means a new
 terminal**, not a re-dispatch. Supervise per the orchestration skill: rolling `check --wait` for
 `worker_done`/`escalation`; a timeout is a checkpoint, not a failure; answer `ask`s with `reply`;

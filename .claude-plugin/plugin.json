@@ -1,6 +1,6 @@
 {
   "name": "workflow",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "GitHub-issue-native delivery pipeline: /project-kit (labels + conventions + domain docs) -> /spec (grilled PRD as a parent issue) -> /taskplan (dependency-linked sub-issues) -> /implement (1 parent = 1 worktree = 1 branch = 1 PR; the session walks the graph and implements every ticket itself — /implement-orc for orchestrator + workers, --orca for Orca terminals, only on request; implement-core doctrine) -> /cleanup (PR, CI, merge, close parent, teardown) -> /stats (per-stage token cost, rolled up at cleanup). Plus /triage for inbound raw issues, and the grilling + domain-modeling engines (CONTEXT.md glossary, minimal ADRs).",
   "author": {
     "name": "SangUk Park"
