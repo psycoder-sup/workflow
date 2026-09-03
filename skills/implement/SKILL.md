@@ -8,8 +8,8 @@ description: >
   the whole spec, so spec-level constraints survive and nothing is re-derived per ticket; on context
   overflow it lands, pushes and relays to a fresh session. Read-only helpers (verifier, Explore,
   /code-review, /security-review) stay available as context firewalls. Also takes a single triaged
-  issue (no sub-issues). For an orchestrator/worker build use /implement-orc instead — only when the
-  user explicitly asks for it. Use after /taskplan has published the sub-issues.
+  issue (no sub-issues). Use after /taskplan has published the sub-issues. (An orchestrator/worker
+  build is the separate /implement-orc skill, invoked by the user by name.)
 trigger: /implement
 user-invocable: true
 argument-hint: "<parent issue number, e.g. 42> [--dry-run]"
@@ -32,23 +32,18 @@ PR, that was `/spec`'s split decision — it published sibling parents, and cros
 is simply running `/implement` twice in two sessions. Refuse a parent whose own `blocked-by`
 (parent-to-parent) edges are still open — its predecessor hasn't shipped.
 
-## Why one session, and what it costs
+## One session, and what it costs
 
-Measured on a 7-ticket chain, same model, two arms in parallel: one worker per ticket ran 2.9× the
-wall-clock, 2× the cost and 3× the diff of a single context — and produced seven per-surface test
-files the parent spec had forbidden, because no worker ever held the spec. Splitting a spec across N
-contexts loses spec-level invariants; every orchestration patch (frozen headers, "landed so far"
-digests) exists to plug that leak. One session holding the whole parent has no leak to plug. Across
-22 logged orchestrated runs the orchestrator itself was the largest output bucket (3.99M tokens
-against 2.87M for the implementers) — supervision cost more than the work.
+One context holds the whole spec for the whole walk, so spec-level constraints survive and nothing
+is re-derived per ticket. (Measured: splitting a 7-ticket chain across per-ticket contexts ran 2.9×
+the clock, 2× the cost, and lost a testing rule that lived only in the parent.)
 
-**The trade:** the context that writes the code also grades it. Solo mode pays for that in two
-places, and neither is optional: acceptance criteria are **re-read from GitHub** before every landing
-(Step 3), and the **reviews in Step 4 are a gate**, not a nicety.
+**The trade:** the context that writes the code also grades it. You pay for that in two places, and
+neither is optional: acceptance criteria are **re-read from GitHub** before every landing (Step 3),
+and the **reviews in Step 4 are a gate**, not a nicety.
 
-**Never fall back to workers.** A big graph does not turn this into an orchestrated build — it
-relays (Step 3). If the user wants an orchestrator and workers, that is **`/implement-orc`**, and they
-ask for it by name. You don't switch on their behalf.
+**You never delegate implementation.** A big graph relays (Step 3); it does not spawn workers. If the
+user wants workers they invoke a different skill by name — you don't switch on their behalf.
 
 **Helpers that are allowed** — they read a lot and return a little, protecting this session's
 context. None of them writes source:
@@ -59,7 +54,7 @@ context. None of them writes source:
 - **`/code-review`, `/security-review`** — fresh-eyes review of the integrated diff at the end.
 
 Anything that edits source under a different context — `code-implementer`, `general-purpose` with
-Edit, `isolation: worktree` agents — belongs to `/implement-orc`.
+Edit, `isolation: worktree` agents — is not part of this skill.
 
 ## Preconditions
 
@@ -153,8 +148,8 @@ Read, in this order, and keep them in view for the whole walk:
 3. **Repo conventions** worth stating once, and the **exact build / test / typecheck commands**,
    resolved from CI config or package scripts. Resolve them now, not per ticket.
 
-There is no header to freeze and nobody to send a brief to — this is simply what you know for the
-rest of the walk.
+This is simply what you know for the rest of the walk — resolve it once, don't rediscover it per
+ticket.
 
 ## Step 3 — Walk the graph, implement each ticket yourself
 
@@ -171,8 +166,8 @@ Each `/taskplan` sub-issue body carries an advisory block:
 <!-- taskplan: {"files_owned": [...], "model": "opus", "method": "tdd"} -->
 ```
 
-**Only `method` applies to you.** `files_owned` partitions workers that don't exist — the branch is
-your boundary — and `model` routes a worker; you run on the session's model. Missing block → `tdd`
+**Only `method` applies to you.** `files_owned` and `model` are planning metadata for other tooling —
+the branch is your boundary and you run on the session's model. Missing block → `tdd`
 where a test seam exists (implement-core §3), and say which seam you chose.
 
 ### Per ticket
@@ -181,7 +176,8 @@ where a test seam exists (implement-core §3), and say which seam you chose.
    decides body vs agent-brief comment. Read it fresh from GitHub, not from memory of the graph.
 2. **Implement** per implement-core §2–§5: read the code around the change, follow the glossary and
    ADRs, build by the ticket's `method`, stay on the ticket. Adjacent improvements are follow-ups, not
-   scope. Re-check the parent's constraints before you consider the ticket done.
+   scope. Re-check the parent's constraints before you consider the ticket done. implement-core says
+   "stop and surface it" on a fork — for you that means ask the user.
 3. **Verify against the criteria, one by one** — re-read the `## Acceptance criteria` list from the
    issue and tick each against what you built. Run typecheck + the relevant tests; delegate a long-log
    suite to `verifier`. **Never land on a red build.**
@@ -198,8 +194,8 @@ where a test seam exists (implement-core §3), and say which seam you chose.
    ```
 
    The `Ticket: #<n>` trailer is load-bearing — it is the done-marker resume reads and the record the
-   PR body is built from. The body is your report: what a worker would have told an orchestrator, you
-   tell the git log. Then **push** — an unpushed landing is state only this session knows, and the
+   PR body is built from. The body is your report — implement-core §5's deviations and follow-ups
+   land here. Then **push** — an unpushed landing is state only this session knows, and the
    relay below depends on it.
 5. **Log one agent record** — one per ticket, `--executor session`, so per-ticket quality rates stay
    comparable with the orchestrated history:
@@ -230,8 +226,8 @@ command, a glossary term, a convention set three tickets ago).
 When it happens: **finish the ticket you're on, land it, push, stop, and tell the user to start a
 fresh session and run `/implement <parent>` again.** Step 1's resume path picks up from the first
 unlanded trailer with a fresh context that re-orients from the same sources. This is the *same* path
-a died session uses — one mechanism, already trusted. A subagent here would cost a cold prefix *and*
-resurrect an orchestrator for an edge case; a relay costs one re-orientation.
+a died session uses — one mechanism, already trusted. A relay costs one re-orientation and nothing
+else.
 
 Never land a half-finished ticket to relay faster. The trailer means done.
 
@@ -282,7 +278,7 @@ When every child has landed:
 - **Scope is one parent.** Never sweep the repo; never implement the parent itself.
 - **No acceptance criteria → not a ticket.** Refuse it, whatever its label says.
 - **Claim all children up-front; announce on the parent.** The assignee set is the campaign lock.
-- **You implement. No workers, ever — `/implement-orc` is a different skill the user invokes.**
+- **You implement. No workers, ever.**
 - **Verify against criteria re-read from GitHub, not from memory.**
 - **Reviews are a gate.** The same context wrote and graded every ticket.
 - **Landed = trailer on the pushed branch. Closed = merged to main.** Never close a child by hand.
@@ -296,8 +292,7 @@ When every child has landed:
 - A ticket's body has no acceptance criteria → it didn't come from `/taskplan` and triage never
   finished it. Refuse it.
 - A child is assigned to someone else → another session holds this parent. Stop.
-- You're about to spawn a `code-implementer` "just for this one ticket" → that's `/implement-orc`,
-  and the user didn't ask for it. Implement it.
+- You're about to spawn a `code-implementer` "just for this one ticket" → not this skill. Implement it.
 - You're verifying a ticket from memory of its criteria instead of re-reading the issue → fetch it.
 - You skipped `/code-review` because "the tests are green" → the tests were written by the same
   context that wrote the code. Run it.

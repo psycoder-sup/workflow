@@ -1,76 +1,20 @@
 ---
 name: implement-core
 description: >
-  The per-ticket implementation doctrine — how to build ONE ticket (a GitHub sub-issue or a triaged
-  issue) well, whoever is building it: the /implement session itself in solo mode (the default), or a
-  worker under /implement-orc (code-implementer subagents and --orca terminal sessions).
-  Read the contract, respect CONTEXT.md and ADRs, build by the prescribed method, self-verify against
-  acceptance criteria, record the result (a commit body in solo mode; the IMPLEMENTER REPORT when
-  reporting to an orchestrator). Never invoked directly by a user.
+  How to implement ONE ticket well — a GitHub sub-issue from /taskplan or an issue triaged to
+  ready-for-agent. Which text is the contract, what to read before writing, how to build by the
+  ticket's prescribed method, how to stay on the ticket, how to self-verify against the acceptance
+  criteria. The shared doctrine behind /implement; carries nothing about how the calling skill
+  records or lands the result. Never invoked directly by a user.
 user-invocable: false
 disable-model-invocation: true
 ---
 
 # implement-core — how to implement one ticket well
 
-This is the doctrine the **implementer** follows to build one ticket. A ticket is one GitHub issue: a
-sub-issue published by `/taskplan`, or a standalone issue triaged to `ready-for-agent`.
-
-The implementer is one of:
-
-- **the `/implement` session itself** — solo mode, the default. You hold the whole parent; you walk
-  the tickets in order; §1–§5 apply to each one and §6-solo says how you record it.
-- **a worker under `/implement-orc`** — a `code-implementer` subagent or an Orca terminal
-  session, briefed by an orchestrator per §0. A worker sees only its brief; §1–§5 apply and
-  §6-orchestrated says how it reports.
-
-The doctrine is the same either way. Only §0 (how a brief is laid out), §4 (a file boundary) and §6
-(where the result goes) depend on who is implementing.
-
-## 0. Brief layout — orchestrated mode only
-
-Skip this section in solo mode: there is no brief, because there is nobody to send it to.
-
-An orchestrator composes each worker's brief as **two blocks, shared part first**. Never
-interleaved, never reordered.
-
-```
-──── [A] CAMPAIGN HEADER — byte-identical in every brief of this campaign ────
-  1. this implement-core doctrine
-  2. the campaign orientation digest:
-       - CONTEXT.md / CONTEXT-MAP.md glossary excerpt
-       - the ADR index for the area this campaign touches
-       - repo conventions worth stating once
-       - the exact build / test / typecheck commands
-       - `## Parent constraints` — the parent spec's Implementation Decisions and
-         Testing Decisions sections, verbatim
-  3. the IMPLEMENTER REPORT format (§6)
-──── [B] TICKET BLOCK — differs per worker ────
-  - the contract verbatim (§1) and its ticket number
-      (chain mode: every ticket's contract, in walk order)
-  - `## File ownership` (`files_owned`) — only when fanned out (§4)
-  - `## Landed so far` — fan-out mode, second wave on: the `summary` and
-    `files_changed` lines of every previous IMPLEMENTER REPORT
-  - the ticket's `method` (§3)
-```
-
-`## Parent constraints` is in `[A]` because it is the same for every worker and because a rule that
-lives only in the parent is a rule no worker follows — seven test files a spec had forbidden came out
-of one campaign whose workers each saw only their own ticket. `## Landed so far` is in `[B]` because
-it grows per wave; it exists so a fresh worker does not spend its first hundred reads re-deriving a
-convention a sibling established minutes earlier. (Both sections patch a leak that solo mode does not
-have: one session holding the parent never loses the constraints and never forgets its own
-conventions.)
-
-**`[A]` is frozen for the campaign's lifetime, and carries no per-ticket value.** An issue number, a
-file list, or a tier name that leaks into `[A]` makes it unique per worker, and the shared prefix
-becomes unreachable for everyone. If `[A]` genuinely must change mid-campaign (a new ADR lands),
-that is a *new* header from that point on and one accepted cold miss — say so rather than editing it
-silently.
-
-**Why the order is load-bearing:** prompt caching is a byte prefix match from position zero.
-Identical text placed first is read by every worker at a fraction of its price; the same text placed
-after the ticket contract is unreachable, because each brief has already diverged.
+A ticket is one GitHub issue: a sub-issue published by `/taskplan`, or a standalone issue triaged to
+`ready-for-agent`. This is the doctrine for building it. The skill that sent you here says what to do
+with the result — this file says only how to produce it well.
 
 ## 1. Which text is the contract
 
@@ -89,19 +33,17 @@ it as the spec hands you the symptom instead of the work. Recognise an agent bri
 If an issue is labelled agent-ready but carries **no** brief and **no** acceptance criteria in its
 body, it is not a ticket — refuse it as under-specified rather than guessing.
 
-**Read the contract verbatim, and in solo mode read it fresh from GitHub for every ticket** — not
-from your memory of the graph. A paraphrase silently drops acceptance criteria. The acceptance
-criteria are the contract — verify against them, not against vibes. (Orchestrators: paste it
-verbatim into the brief for the same reason.)
+**Read the contract verbatim, and read it fresh from GitHub for every ticket** — not from your memory
+of the graph. A paraphrase silently drops acceptance criteria. The acceptance criteria are the
+contract — verify against them, not against vibes.
 
 ## 2. Before you write anything
 
 Read `CONTEXT.md` (or `CONTEXT-MAP.md` and the contexts it points at) and any ADRs under `docs/adr/`
 that touch this area. Name things using the glossary's vocabulary — if a concept you need isn't in
 it, that's a signal: either you're inventing language the project doesn't use, or there's a real gap
-worth noting. **If your approach contradicts an ADR, STOP rather than quietly overriding it** —
-solo: ask the user; worker: report it as a blocker. Reopening a decision is never the implementer's
-call.
+worth noting. **If your approach contradicts an ADR, stop and surface it rather than quietly
+overriding it** — reopening a decision is never the implementer's call.
 
 If those files don't exist, proceed silently — they're created lazily, and their absence is normal.
 
@@ -109,9 +51,9 @@ Then read the code you're about to change, and the code around it. Follow surrou
 reuse existing utilities before writing new ones.
 
 **Keep the parent's constraints in view.** The parent spec's `Implementation Decisions` and
-`Testing Decisions` bind every ticket and no ticket restates them. Solo: you read them once in
-`/implement` Step 2 — re-check them before each landing. Worker: they are `## Parent constraints` in
-your header.
+`Testing Decisions` bind every ticket and no ticket restates them. Re-check them before you consider
+a ticket done — a testing rule that lives only in the parent is the first thing lost when attention
+narrows to one ticket.
 
 ## 3. Build by the prescribed method
 
@@ -121,12 +63,12 @@ Every `/taskplan` sub-issue carries a machine-readable block in its body:
 <!-- taskplan: {"files_owned": [...], "model": "opus", "method": "tdd"} -->
 ```
 
-The `method` is decided at planning time so an unattended implementer never has to negotiate it:
+`method` is the field that applies here; the others are planning metadata for the calling skill. It
+is decided at planning time so an unattended implementer never has to negotiate it:
 
 - **`tdd`** — work test-first at the seams the spec named: write the failing test (red), then the
   minimal code to pass (green), then refactor. Test the seam's **external behaviour**, not its
   internals — a test asserting implementation detail breaks on every refactor and protects nothing.
-  Fan-out workers: test files live inside the ticket's file boundary.
 - **`source-driven`** — ground every external API/library decision in official documentation
   (context7/WebFetch); cite the source in your record. Never guess an API surface.
 - **`incremental`** — ship the thinnest vertical slice that meets the criteria; gate risky or
@@ -134,80 +76,24 @@ The `method` is decided at planning time so an unattended implementer never has 
 
 Methods compose (a ticket can be `tdd` + `source-driven`). **When the block is absent** (a triaged
 issue, a hand-written ticket), default to `tdd` where a test seam exists, and note the seam you
-chose. The block's `files_owned` and `model` are orchestration metadata — in solo mode they don't
-apply to you.
+chose.
 
 Run typechecking and the relevant test files **as you go**, and the full scope-relevant suite once
 at the end. Never claim done on a red build.
 
-## 4. The file boundary
+## 4. Stay on the ticket
 
-**Solo mode, or a chain worker:** the branch is the boundary — stay inside this ticket. Work that
-belongs to another ticket is a follow-up, not a fix, even if it's one line.
-
-**Fan-out worker with a `## File ownership` section:** it is a **hard boundary** — create or modify
-only those paths. Needing anything outside it means the partition was wrong — **STOP and report the
-cross-boundary need** (subagent: as a `blockers` entry; Orca worker: via `ask`). Do not edit it.
+The ticket is the boundary. Work that belongs to another ticket is a follow-up, not a fix — even if
+it's one line, even if you're already in the file. Tempting adjacent improvements go under
+follow-ups. No scope expansion.
 
 ## 5. Rules
 
-- **Stay on the ticket.** No scope expansion; tempting adjacent improvements go under follow-ups.
-- **Git duties depend on who you are.**
-  - *Solo:* you commit each ticket as you finish it — `<type>: <ticket title> (#<n>)` with a
-    `Ticket: #<n>` trailer and the §6-solo body — and you **push after every landing**. You open the
-    PR only at the end of the walk, and only after the user approves.
-  - *Chain worker:* commit each ticket as you finish it with the same trailer, then move to the
-    next. **No push, no branch, no PR** — the orchestrator does those.
-  - *Fan-out worker:* **do not commit, push, branch, or open PRs — you only change the working
-    tree.** The orchestrator verifies and lands your work.
-- **STOP on a real design fork.** If the acceptance criteria leave a genuine design decision open,
-  stop rather than guess — solo: ask the user; worker: report it as a blocker. A ruling beats a
-  reworked wrong guess. Deviate silently only on trivia, and record it under deviations.
+- **Stop on a real design fork.** If the acceptance criteria leave a genuine design decision open,
+  stop and surface it rather than guess — a ruling beats a reworked wrong guess. Deviate silently
+  only on trivia, and record every deviation.
 - **Self-verify before recording done.** Walk the acceptance criteria one by one against what you
-  built — re-read them from the issue, not from memory.
-
-## 6. Output — where the result goes
-
-### 6-solo — the commit body
-
-The commit is the record. What a worker would tell an orchestrator, you tell the git log:
-
-```
-<type>: <ticket title> (#<n>)
-
-<2–4 lines: what the slice delivers, and how it was verified — the criteria you ticked,
-the suite you ran>
-Deviations: <or none>
-Follow-ups: <or none>
-
-Ticket: #<n>
-```
-
-The `Ticket: #<n>` trailer is the done-marker `/implement`'s resume path reads and the row the PR
-body is built from. A ticket whose criteria are not all ticked, or whose build is red, has no
-trailer yet — it is not done, and must not be committed as if it were.
-
-### 6-orchestrated — the IMPLEMENTER REPORT
-
-End with EXACTLY this block (an Orca worker puts it in the body of its `worker_done` message and
-lists changed paths in the payload's `filesModified`; a chain worker emits one covering the whole
-walk, with `files_changed` grouped by ticket):
-
-```
-===== IMPLEMENTER REPORT =====
-task: <one-line restatement>
-files_changed:
-  - <path> — <what changed>
-summary: <2-4 lines>
-build: pass | fail | skipped(<reason>)
-tests: pass | fail | skipped(<reason>)
-typecheck: pass | fail | skipped(<reason>)
-verdict: pass | needs-attention | fail
-deviations: <or none>
-blockers: <cross-boundary needs / ambiguities, or none>
-follow_ups: <or none>
-===== END IMPLEMENTER REPORT =====
-```
-
-`verdict: pass` means: every acceptance criterion checked, build/tests/typecheck green in this
-ticket's scope, no unreported deviations. Anything less is `needs-attention` (say why) or `fail`.
+  built — re-read them from the issue, not from memory. Every criterion ticked, build/tests/typecheck
+  green in this ticket's scope, no unrecorded deviations: that is done. Anything less is not.
+- **Record deviations and follow-ups** wherever the calling skill records the result. An unrecorded
+  deviation is a silent spec change.

@@ -39,8 +39,9 @@ provenance) — see Step 4; the doctrine is identical either way.
 
 - **Orchestrator (you, this session)** — read the graph, route tiers, compose briefs, run commands
   (build/test/git), integrate, land commits, decide.
-- **Worker** — implements per the [`implement-core`](../implement-core/SKILL.md) doctrine: contract
-  selection, CONTEXT.md/ADR discipline, the prescribed method, self-verify, the IMPLEMENTER REPORT.
+- **Worker** — implements per the [`implement-core`](../implement-core/SKILL.md) doctrine (contract
+  selection, CONTEXT.md/ADR discipline, the prescribed method, self-verify) plus the worker overlay
+  in [`WORKER.md`](./WORKER.md) (brief layout, file boundary, git duties, STOP, IMPLEMENTER REPORT).
   One worker walks the whole graph (chain mode) or one fresh worker builds one ticket (fan-out mode).
 - **`verifier` subagent (optional)** — independently reproduces build/tests, read-only.
 - **`/code-review`, `/security-review`** — fresh-eyes review of the integrated diff at the end.
@@ -128,8 +129,8 @@ gh issue comment <parent> --body "🛠️ /implement-orc is working this parent 
 
 ### Build the campaign header — once, here
 
-Assemble block `[A]` of [`implement-core` §0](../implement-core/SKILL.md) now, before any dispatch:
-the doctrine, the orientation digest (CONTEXT.md/CONTEXT-MAP.md glossary excerpt, the ADR index for
+Assemble block `[A]` of [`WORKER.md` W-0](./WORKER.md) now, before any dispatch: the implement-core
+doctrine and WORKER.md, the orientation digest (CONTEXT.md/CONTEXT-MAP.md glossary excerpt, the ADR index for
 the area this parent touches, repo conventions, the **exact** build / test / typecheck commands
 resolved from CI config or package scripts, and **`## Parent constraints`** — the parent issue's
 `Implementation Decisions` and `Testing Decisions` sections pasted verbatim), and the IMPLEMENTER
@@ -159,7 +160,7 @@ pick the mode for the whole campaign:
 - **Chain mode** — fewer than half the tickets can run in a wave of width ≥ 2. Dispatch **one
   worker for the whole graph**: header `[A]` as usual, ticket block `[B]` holding every contract in
   walk order. Landing duty is transferred — the worker commits each ticket as it finishes with the
-  `Ticket: #<n>` trailer (implement-core §5), so resume still works. You verify once, at the end.
+  `Ticket: #<n>` trailer (WORKER.md W-2), so resume still works. You verify once, at the end.
   **A chain worker can overflow too**: if it returns partial, or its report shows it re-deriving
   header facts, re-dispatch a fresh worker from the first unlanded trailer — the resume path.
 - **Fan-out mode** — the graph is genuinely wide. One fresh worker per ticket. Dispatch each wave in
@@ -187,9 +188,9 @@ a wave, prefer the wave's dominant tier; never under-route a ticket that needs o
 
 ### The brief
 
-Lay every brief out per implement-core §0: the **frozen header from Step 2, pasted unchanged**, then
-the **ticket block** — the **contract verbatim** (§1's table decides body vs agent-brief comment —
-fetch with `--comments`), the ticket's **method**, the **file boundary** (fan-out only; in a chain
+Lay every brief out per WORKER.md W-0: the **frozen header from Step 2, pasted unchanged**, then
+the **ticket block** — the **contract verbatim** (implement-core §1's table decides body vs
+agent-brief comment — fetch with `--comments`), the ticket's **method**, the **file boundary** (fan-out only; in a chain
 the branch is the boundary), and — fan-out, second wave on — **`## Landed so far`**: the `summary`
 and `files_changed` lines of every previous IMPLEMENTER REPORT, so a fresh worker inherits the
 conventions its siblings just set.
@@ -227,7 +228,7 @@ orca orchestration dispatch --task <task_id> --to <handle> --inject --json
 ```
 
 Orca workers are top-level claude sessions — the `code-implementer` agent definition does NOT apply,
-so the brief must carry the full implement-core doctrine inline (boundary, STOP-via-`ask` rule,
+so the brief must carry implement-core and WORKER.md inline in full (boundary, STOP-via-`ask` rule,
 report block). It carries the **same campaign header bytes** as a subagent brief; that is how
 `--orca` gets the same shared prefix. The tier lives in the argv, so **escalation means a new
 terminal**, not a re-dispatch. Supervise per the orchestration skill: rolling `check --wait` for

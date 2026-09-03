@@ -67,7 +67,7 @@ Per stage: `total`, its share of the pipeline, `output`, `cache_read`, the **cac
 `cache_read` — that is normal for agent loops, where the same prefix is re-read every turn, and it
 is why a single `total` number tells you nothing on its own. A hit rate that *drops* between
 comparable issues is the signal worth chasing: it means a prefix that used to be shared no longer is
-(see [`implement-core` §0](../implement-core/SKILL.md) on the frozen campaign header).
+(see [`implement-orc/WORKER.md` W-0](../implement-orc/WORKER.md) on the frozen campaign header).
 
 ## Dollar figures are estimates — say so when you quote them
 
