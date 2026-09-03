@@ -9,10 +9,11 @@ Claude Code plugin: one GitHub-issue-native delivery pipeline.
      │                too wide for one PR → split into sibling parents with blocked-by edges
 /taskplan <parent>    vertical-slice sub-issues: native --parent + --blocked-by, ready-for-agent by
      │                construction, taskplan metadata block (files_owned / model / method); quiz-gated
-/implement <parent>   1 parent = 1 worktree = 1 branch = 1 PR; walks the live graph — one worker for the
-     │                whole graph when it is a chain, one fresh worker per ticket in parallel waves when
-     │                file-disjoint (subagents, or --orca for Orca terminals); opus by default; lands
-     │                `Ticket: #<n>` commits; workers follow implement-core
+/implement <parent>   1 parent = 1 worktree = 1 branch = 1 PR; walks the live graph IN THIS SESSION —
+     │                solo by default: one context holds the spec and implements every ticket, landing
+     │                `Ticket: #<n>` commits and relaying to a fresh session on overflow
+/implement-orc        the same build with an orchestrator + workers (chain or fan-out; --orca for Orca
+     │                terminals) — a separate skill, used only when explicitly requested
 /cleanup              PR (adopts /implement's) → poll CI → merge on green → close the parent → teardown
      │                → /stats rollup: what the whole feature cost, stage by stage
 ```
@@ -39,9 +40,10 @@ Label vocabulary and issue/ADR conventions follow
 |---|---|---|
 | `/project-kit` | setup | Create the 8 labels on GitHub, write `docs/agents/{issue-tracker,triage-labels}.md`, seed `CONTEXT.md`, wire the CLAUDE.md block. Migrates the old `docs/pm/` JSON layout (decisions → ADRs) on approval. |
 | `/spec` | define | Frontier-round grilling (with `domain-modeling` writing glossary/ADRs as decisions land) → Pocock-template spec → split check → fresh-eyes review → published parent issue. |
-| `/taskplan` | plan | Decompose a parent into dependency-linked sub-issues sized for parallel waves; user approves the breakdown before anything is published. The issue graph IS the plan. |
-| `/implement` | build | Orchestrate the graph: claim all children, walk in dependency order, fan out file-disjoint unblocked tickets, verify + land each as a `Ticket: #<n>` commit, one PR closing every child. `--orca` swaps subagent workers for Orca terminal sessions. Logs every run (`orchlog.py`). |
-| `implement-core` | doctrine | The per-ticket worker contract all `/implement` briefs are built from (brief layout, contract selection, CONTEXT/ADR discipline, method, self-verify, IMPLEMENTER REPORT). §0 fixes the two-block brief layout — a frozen campaign header shared byte-identically across every worker, then the ticket block. Never invoked directly. |
+| `/taskplan` | plan | Decompose a parent into dependency-linked sub-issues sized as checkpoints (a commit, a review scope, a `Closes` row); user approves the breakdown before anything is published. The issue graph IS the plan. |
+| `/implement` | build | Build the graph in this session: claim all children, walk in dependency order, implement each ticket yourself per `implement-core`, verify against the criteria re-read from GitHub, land each as a `Ticket: #<n>` commit, relay to a fresh session on overflow, one PR closing every child. Logs every run (`orchlog.py`, `mode` + `executor` from 4.0.0). |
+| `/implement-orc` | build (opt-in) | The same build as an orchestrator with workers: chain mode (one worker walks the graph) or fan-out (one fresh worker per file-disjoint ticket), frozen campaign header, tier routing, anti-freelance rule; `--orca` runs workers as Orca terminal sessions. Only when the user asks for it by name. |
+| `implement-core` | doctrine | The per-ticket implementation doctrine for whoever implements — the solo session or a worker (contract selection, CONTEXT/ADR discipline, method, self-verify; result as a commit body in solo mode or an IMPLEMENTER REPORT to an orchestrator). §0 is the orchestrated-only brief layout. Never invoked directly. |
 | `/triage` | inbound | State machine for raw issues/PRs: verify the claim, grill if needed, write agent briefs, maintain `.out-of-scope/`. |
 | `/cleanup` | ship | Adopt/open the PR, poll CI to conclusive (`pollci.py`), auto-merge on green, close the parent when `completed == total`, tear down the worktree. Ends with the `/stats` pipeline rollup. |
 | `/stats` | measure | Per-stage token accounting keyed by parent issue (`stats.py`): the four billed buckets, cache hit rate, estimated cost, and each stage's share of the pipeline. Each stage records one row at its end; `/cleanup` rolls them up. Names missing stages instead of under-reporting. |

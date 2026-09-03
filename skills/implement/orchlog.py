@@ -8,9 +8,10 @@ Subcommands:
 
 Log file: $ORCHESTRATE_LOG, default ~/.claude/orchestrate/runs.jsonl
 
-The orchestrator (the /implement skill) calls `record` after each wave (one
-`agent` line per implementer) and once at milestone end (one `run` line; token
-usage is embedded automatically — pass `--no-auto-tokens` to skip). `report`/`tokens`
+/implement calls `record` once per ticket (one `agent` line per implementer — in solo
+mode the session itself, `--executor session`; under /implement-orc one per worker) and once
+at campaign end (one `run` line carrying `--mode solo|chain|fanout`; token usage is
+embedded automatically — pass `--no-auto-tokens` to skip). `report`/`tokens`
 are for whoever reviews the harness over time to improve the workflow and the agent
 architecture.
 
@@ -33,7 +34,14 @@ from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
 
-WORKFLOW_VERSION = "3.3.0"  # bump when the kit's architecture/log schema changes
+WORKFLOW_VERSION = "4.0.0"  # bump when the kit's architecture/log schema changes
+# 4.0.0: solo mode is the default — the /implement session implements every ticket itself; the
+#        orchestrator/worker split (chain | fanout) lives in the separate /implement-orc skill.
+#        Run records carry `mode` (solo|chain|fanout) and `tickets`; agent records carry
+#        `executor` (session|subagent|orca). Solo logs ONE agent record per ticket so per-ticket
+#        quality rates stay comparable with the 183-agent orchestrated history. Records without
+#        `mode`/`executor` are pre-4.0.0 orchestrated runs. In a solo run the `orchestrator` token
+#        bucket IS the implementation, not overhead — compare cost within a mode only.
 # 3.3.0: chain mode — a graph where fewer than half the tickets can run at width >= 2 gets ONE
 #        worker for the whole walk (measured 2.9x wall-clock / 2x cost / 3x diff for one worker
 #        per chained ticket); opus is the default tier; parent constraints ride in the header.
@@ -106,6 +114,9 @@ def candidate_project_dirs(project_dir):
 
 def pick_session(project_dir, session=None):
     """Explicit session, else the newest session that spawned subagents (else newest transcript).
+
+    Callers should pass $CLAUDE_CODE_SESSION_ID as `session` when available (see _tokens_from_args);
+    the subagent heuristic below is a fallback that assumes an orchestrated run.
 
     Searches the cwd's project dir *and* related worktree dirs, so auto-detect still finds the
     session after EnterWorktree relocated the transcripts (the #1 cause of MISSING token data).
@@ -284,7 +295,11 @@ def compute_tokens(session, since=None, until=None):
 
 def _tokens_from_args(a):
     pdir = Path(a.project_dir).expanduser() if a.project_dir else project_dir_for_cwd()
-    session = pick_session(pdir, a.session)
+    # $CLAUDE_CODE_SESSION_ID is the only exactly-right source. pick_session's "newest session
+    # that spawned subagents" heuristic was correct when every /implement run was an orchestrator;
+    # a solo run that never used verifier/Explore spawns none and would resolve to an OLDER
+    # orchestrated session, billing the wrong window.
+    session = pick_session(pdir, a.session or os.environ.get("CLAUDE_CODE_SESSION_ID"))
     if not session:
         return None
     return compute_tokens(session, a.since, getattr(a, "until", None))
@@ -312,7 +327,13 @@ def cmd_record(a):
             "had_blockers": a.blockers,
             "boundary_stop": a.boundary_stop,
             "isolation": a.isolation,
-            "model": a.model,  # tier ORCH routed this task to (opus|sonnet); model-fit signal
+            # executor: who implemented — the /implement session itself (solo), a code-implementer
+            # subagent, or an Orca terminal worker. Missing on pre-4.0.0 records (= subagent|orca).
+            "executor": a.executor,
+            # tickets: how many tickets this one record covers (a chain worker covers the whole
+            # graph; solo and fan-out records cover exactly one). None = 1.
+            "tickets": a.tickets,
+            "model": a.model,  # tier the implementer ran on (opus|sonnet); model-fit signal
             # rework = re-delegated because the implementer's own work failed self-verify
             # (a quality signal); review_fix = delegated a review finding (healthy, expected).
             # --redelegated is a deprecated alias that folds into rework.
@@ -328,6 +349,8 @@ def cmd_record(a):
         fix_iters = a.fix_iterations if a.fix_iterations is not None else rework_n
         widths = wave_widths_for_run(a.run_id, prior)
         rec.update({
+            "mode": a.mode,                     # solo | chain | fanout; None = pre-4.0.0 orchestrated
+            "tickets": a.tickets,               # tickets landed in this run
             "branch": a.branch,
             "milestone": a.milestone,
             "waves": a.waves,
@@ -431,6 +454,16 @@ def load(path):
 
 def pct(n, d):
     return f"{(100 * n / d):.0f}%" if d else "—"
+
+
+def _run_mode(r):
+    """solo | chain | fanout | legacy — legacy = a pre-4.0.0 record, always orchestrated."""
+    return r.get("mode") or "legacy"
+
+
+def _executor(r):
+    """session | subagent | orca | legacy — legacy = a pre-4.0.0 worker record."""
+    return r.get("executor") or "legacy"
 
 
 def _is_rework(r):
@@ -553,11 +586,18 @@ def cmd_report(a):
         pr = sum(1 for r in runs if r.get("pr_created"))
         bf = sum(1 for r in runs if r.get("build_final") == "pass")
         tf = sum(1 for r in runs if r.get("tests_final") == "pass")
+        modes = Counter(_run_mode(r) for r in runs)
+        # peak_width == 1 is BY DESIGN in solo (one session); it's a mis-mode only when orchestrated.
+        orch_runs = [r for r in runs if _run_mode(r) != "solo"]
+        orch_serial = sum(1 for r in orch_runs
+                          if (w := wave_widths_for_run(r.get("run_id"), agents)) and max(w) == 1
+                          and len(w) > 1)
         print("RUN")
+        print("  mode:           " + ", ".join(f"{k}={v}" for k, v in modes.items())
+              + "   (legacy = pre-4.0.0 orchestrated; compare metrics within a mode)")
         print("  outcome:        " + ", ".join(f"{k}={v}" for k, v in oc.items()))
-        print(f"  avg waves:      {avg('waves')}")
-        print(f"  avg agents:     {avg('agents_total')}")
-        print(f"  avg peak width: {avg_peak:.1f}   serial runs (peak==1, W>=2 gate says don't orchestrate): {serial}/{len(runs)}")
+        print(f"  avg tickets:    {avg('tickets')}   avg waves: {avg('waves')}   avg agents: {avg('agents_total')}")
+        print(f"  avg peak width: {avg_peak:.1f}   orchestrated runs that were really a chain (peak==1, >1 worker): {orch_serial}/{len(orch_runs)}")
         print(f"  avg rework/run:     {avg_rework:.2f}   <- derived from agent tags; high = self-verify failures, briefs/partition need work")
         print(f"  avg review-fix/run: {avg_rfix:.2f}   (healthy: review findings routed to fix tasks)")
         print(f"  build_final ok: {pct(bf, len(runs))}   tests_final ok: {pct(tf, len(runs))}   pr_created: {pct(pr, len(runs))}")
@@ -573,13 +613,25 @@ def cmd_report(a):
         rfix = sum(1 for r in agents if r.get("review_fix"))
         dev = sum(1 for r in agents if r.get("deviated"))
         blk = sum(1 for r in agents if r.get("had_blockers"))
+        exe = Counter(_executor(r) for r in agents)
         print("AGENT")
+        print("  executor:       " + ", ".join(f"{k}={v}" for k, v in exe.items())
+              + "   (one record per ticket in solo/fan-out; a chain record spans `tickets`)")
         print("  verdict:        " + ", ".join(f"{k}={v}" for k, v in vd.items()))
         print(f"  boundary_stop:  {pct(bstop, n)}   <- high = partition too coarse / boundaries wrong")
         print(f"  rework:         {pct(rework, n)}   <- high = self-verify failures; briefs under-specified / task too big")
         print(f"  review_fix:     {pct(rfix, n)}   (healthy: review findings routed to fix tasks — not a quality signal)")
         print(f"  deviated:       {pct(dev, n)}   <- high = acceptance criteria not tight enough")
         print(f"  had_blockers:   {pct(blk, n)}")
+        if len(exe) > 1:
+            by_exe = {}
+            for r in agents:
+                e = _executor(r)
+                tot, rwk, dv = by_exe.get(e, (0, 0, 0))
+                by_exe[e] = (tot + 1, rwk + (1 if _is_rework(r) else 0), dv + (1 if r.get("deviated") else 0))
+            print("  by executor:    " + "; ".join(
+                f"{e}: rework {pct(rwk, tot)}, deviated {pct(dv, tot)}" for e, (tot, rwk, dv) in by_exe.items())
+                  + "   <- the solo-vs-worker quality comparison")
         print("  isolation:      " + ", ".join(f"{k}={v}" for k, v in iso.items()))
         if mdl:
             print("  model:          " + ", ".join(f"{k}={v}" for k, v in mdl.items()))
@@ -609,6 +661,9 @@ def cmd_report(a):
                         bt[k][f] += v.get(f, 0)
         nrun = len(trun)
         print("COST (tokens)")
+        if any(_run_mode(r) == "solo" for r in trun):
+            print("  note: in solo runs the `orchestrator` bucket is the implementing session itself —"
+                  " it is the work, not overhead")
         print(f"  avg output/run: {sum(r['tokens_output'] for r in trun) // nrun:,}")
         print(f"  avg total/run:  {sum(r.get('tokens_total', 0) for r in trun) // nrun:,}   (cache_read dominates total)")
         print("  output by type: " + ", ".join(f"{k}={v:,}" for k, v in sorted(bt_out.items(), key=lambda kv: -kv[1])))
@@ -673,6 +728,11 @@ def main():
     r.add_argument("--blockers", action="store_true", help="had blockers")
     r.add_argument("--boundary-stop", action="store_true", dest="boundary_stop")
     r.add_argument("--isolation", choices=["tree", "worktree"], default="tree")
+    r.add_argument("--executor", choices=["session", "subagent", "orca"], default=None,
+                   help="who implemented: the /implement session itself (solo mode), a subagent, or an Orca worker")
+    r.add_argument("--tickets", type=int, default=None,
+                   help="agent: tickets this record covers (chain worker = whole graph; default 1). "
+                        "run: tickets landed in the run")
     # haiku/fable stay accepted so historical and hand-corrected records still parse; the routing
     # table in /implement is sonnet|opus only as of 3.2.0.
     r.add_argument("--model", choices=["fable", "opus", "sonnet", "haiku"], default=None,
@@ -684,6 +744,8 @@ def main():
     r.add_argument("--redelegated", action="store_true",
                    help="DEPRECATED: alias for --rework; prefer --rework or --review-fix")
     # run fields
+    r.add_argument("--mode", choices=["solo", "chain", "fanout"], default=None,
+                   help="solo (/implement: the session implements) | chain | fanout (/implement-orc)")
     r.add_argument("--branch", default="")
     r.add_argument("--milestone", default="")
     r.add_argument("--waves", type=int)

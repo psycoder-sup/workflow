@@ -1,7 +1,7 @@
 ---
 name: cleanup
 description: >
-  Ship completed work off a worktree branch — an /implement campaign branch (whose already-open PR
+  Ship completed work off a worktree branch — an /implement or /implement-orc campaign branch (whose already-open PR
   is adopted, never recreated) or a single-issue build: open a PR for the branch (auto-closing the
   GitHub sub-issues it resolves via Closes lines), poll CI until conclusive (never cancel —
   self-hosted runners can be slow), auto-merge when every check is green and the PR is
@@ -32,7 +32,7 @@ required, you STOP and report — remediation is a fresh `/implement` pass or a 
 Right after a successful `/implement`: the branch lives in a dedicated worktree, its build/tests are
 green locally, and you're ready to ship it to `main`. Not for unverified work.
 
-**Prefer a fresh (or cleared) session over the tail of a long orchestrator session.** CI polling is
+**Prefer a fresh (or cleared) session over the tail of a long `/implement` session.** CI polling is
 many turns, and every turn re-reads whatever the session carries. Everything this skill needs is on
 disk and in GitHub — the branch, the trailers, the issue graph.
 

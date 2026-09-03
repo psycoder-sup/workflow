@@ -20,6 +20,6 @@ contradiction with an ADR. If these files don't exist, proceed silently.
 ### Pipeline
 
 `/spec` (grilled PRD → parent issue) → `/taskplan` (sub-issues + dependencies) →
-`/implement <parent>` (one worktree, one branch, one PR; `--orca` for terminal workers) →
+`/implement <parent>` (one worktree, one branch, one PR, built in this session; `/implement-orc` for orchestrator + workers, only on request) →
 `/cleanup` (PR → CI → merge → close parent). Inbound raw bugs/ideas go through `/triage` first.
 <!-- project-kit:end -->
